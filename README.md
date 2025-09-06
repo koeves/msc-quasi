@@ -18,3 +18,6 @@ as per [2] as a stepping stone to arrive at the second variation addressing gen-
 eral quasi-reducibility. Finally, the last version adapts the algorithm for sorted
 applicative term rewriting. The correctness of the algorithms are demonstrated
 by a termination argument and a soundness argument.
+
+
+[Full thesis](https://github.com/koeves/msc-quasi/blob/main/Thesis__Beyond_Pattern_Completeness__Deciding_Quasi_Reducibility_in_Left_Linear_TRSs.pdf)
