@@ -1,5 +1,7 @@
 # Beyond Pattern Completeness: Deciding Quasi-Reducibility in Left-Linear TRSs
 Master's thesis
+Vrije Universiteit Amsterdam
+2025
 
 ### Abstract
 
