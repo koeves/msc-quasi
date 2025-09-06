@@ -1,0 +1,808 @@
+\documentclass{report}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{xcolor}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{trees}
+\usepackage{forest}
+\usepackage{minted}
+\usepackage{placeins}
+
+\usepackage[parfill]{parskip}
+
+\usepackage[sorting=none]{biblatex}
+\renewbibmacro{in:}{%
+  \ifentrytype{article}{}{\printtext{\bibstring{in}\intitlepunct}}}
+\addbibresource{cite.bib}
+
+\usepackage{mdframed}
+
+\newmdenv[
+  leftline=true,
+  topline=false,
+  bottomline=false,
+  rightline=false,
+  linecolor=black,
+  linewidth=1pt,
+  innerleftmargin=10pt,
+  innerrightmargin=0pt,
+  innertopmargin=5pt,
+  innerbottommargin=5pt,
+  skipabove=10pt,
+  skipbelow=5pt
+]{customblock}
+
+\theoremstyle{definition}
+
+\newtheorem{theorem_inner}{Theorem}
+\newenvironment{theorem}
+  {\begin{customblock}\begin{theorem_inner}}
+  {\end{theorem_inner}\end{customblock}}
+  
+\newtheorem{lemma_inner}{Lemma}
+\newenvironment{lemma}
+  {\begin{customblock}\begin{lemma_inner}}
+  {\end{lemma_inner}\end{customblock}}
+
+\newtheorem{definition_inner}{Definition}
+\newenvironment{definition}
+  {\begin{customblock}\begin{definition_inner}}
+  {\end{definition_inner}\end{customblock}}
+
+\newtheorem{example_inner}{Example}
+\newenvironment{example}
+  {\begin{customblock}\begin{example_inner}}
+  {\end{example_inner}\end{customblock}}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\renewcommand{\chaptermark}[1]{\markboth{\MakeUppercase{#1}}{}}
+\fancyhead{}
+\fancyhead[RO, LE]{\leftmark}
+
+\title{Beyond Pattern Completeness:\\Deciding Quasi-Reducibility in Left-Linear TRSs\\
+\vspace{1cm}
+{\large Vrije Universiteit Amsterdam} \\ 
+{\large Master's Thesis} \\
+\vspace{1.3cm}
+{\includegraphics[height=28mm]{vu-griffioen.pdf}}
+}
+\author{Daniel Koves\\
+\small{student number: \texttt{2631781}}\\
+\vspace*{0.5cm}\\    
+  \normalsize{Supervisors} \\
+  Femke van Raamsdonk \\
+  Jörg Endrullis
+}
+
+\date{August 2025}
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+    Pattern completeness, as a property of functional programs, guarantees that a function is exhaustively defined for all possible inputs of its type. When modelling functional programs via term rewrite systems, pattern completeness ensures that any \textit{basic} term – a ground term that has a defined symbol at the root position – can be rewritten at the top.
+
+    We adapt the decision procedure of Thiemann and Yamada \cite{thiemann} for pattern completeness to address quasi-reducibility, a related notion to pattern completeness that ensures computation does not get stuck by permitting matches to happen anywhere in the term. 
+
+    The adaptation has three variations: first one considers strong quasi-reducibility as per \cite{aoto} as a stepping stone to arrive at the second variation addressing general quasi-reducibility. Finally, the last version adapts the algorithm for sorted applicative term rewriting. The correctness of the algorithms are demonstrated by a termination argument and a soundness argument.
+\end{abstract}
+
+\tableofcontents
+
+\chapter{Introduction}\label{chapter:intro}
+Pattern completeness in the world of functional programming is a crucial notion ensuring that given any input a function can compute a result. This is done by ensuring that the function definition cover all cases of the input, as in, if the function takes e.g. a list of numbers, then the definition must cover all constructors of lists: the empty list and the non-empty list (or \textit{cons}). Algorithms to decide pattern completeness (and similar notions) have existed for long time \cite{thiel, kapur, lazrek}, indeed all general functional programming languages implement such an algorithm in their compilers, like the Glasgow Haskell Compiler for Haskell \cite{ghc}. Most of these algorithms are implemented by translating the pattern completeness problem to a series of \textit{matching problems}, where an input term is matched to each of the cases in the definition of the given function. If the input term can be matched to all the cases, then we can conclude that the given function is pattern complete. Example of an incomplete program can be seen on Figure \ref{fig:haskell-incomplete}, notice the missing case for \texttt{Nothing}:
+
+\begin{figure}[!ht]
+\centering
+\begin{minipage}{0.5\linewidth}
+\begin{minted}{haskell}
+first :: [a] -> Maybe a
+first (x:_) = Just x
+
+main :: IO ()
+main = print $ first []
+\end{minted}
+\end{minipage}
+    \caption{Haskell with an incomplete pattern: this would blow up!}
+    \label{fig:haskell-incomplete}
+\end{figure}
+
+And the version that is complete can be seen on Figure \ref{fig:haskell-complete}:
+\begin{figure}[!ht]
+\centering
+\begin{minipage}{0.5\linewidth}
+\begin{minted}{haskell}
+first :: [a] -> Maybe a
+first (x:_) = Just x
+first []    = None
+ 
+main :: IO ()
+main = print $ first []
+\end{minted}
+\end{minipage}
+    \caption{Haskell with a complete pattern: this is now fine}
+    \label{fig:haskell-complete}
+\end{figure}
+
+\FloatBarrier
+
+While pattern completeness is a useful, and quite strong requirement to have, in some other cases, one can make do with less strict notions. One such notion is quasi-reducibility, which captures the requirement that computation does not get stuck. While for pattern completeness, we needed input terms to be matched to the cases of the function definition, for quasi-reducibility, it is enough that a subterm of the input term can be matched to the cases of the definition. If we try to translate this to a real-world program, it would mean something like: while we can have incomplete function definitions, but as long as we can match the input to any left-hand side (the cases in the function definitions), we ensure that we always can compute a value. This can be modelled in functional languages by using free monads or free algebras, which lets us define custom evaluation strategies that can be useful in domain specific languages and tree-like settings \cite{free}.
+
+One such pattern completeness algorithm, which works by translating the input problem into a series of matching problems is that of Thiemann and Yamada \cite{thiemann}. The paper models computation via term rewriting, which is a sufficiently interesting and fitting framework for such algorithms. Term rewriting is expressible enough to model such computations with the added benefit of being quite intuitive. We can translate the earlier Haskell example using the following term rewrite system in Example \ref{example:trs-first}. The background for term rewriting is further discussed in Chapter \ref{chapter:preliminaries}.
+
+\begin{example}\label{example:trs-first}
+We define a term rewrite system $\mathcal{R}$ with a defined symbol $\mathcal{D} = \{\text{first}\}$ and constructors $\mathcal{C} = \{\texttt{[]}, \texttt{:}\}$. The rewrite rules of the system are as follows:
+$$R = \{\text{first}\ (x\ \texttt{:}\ xs) \to x,\ \text{first}\ \texttt{[]} \to \texttt{[]}\}$$
+\end{example}
+
+Furthermore, for pattern completeness specifically, modelling the algorithms via term rewriting is also natural, since the algorithms we consider are syntactic in nature and programs written in functional languages can easily be adapted to term rewrite systems. As the title suggests, we will consider \textit{left-linear} term rewrite systems, where a variable in the left-hand side of the rules cannot appear more than once. This is a natural restriction to make when we consider functional programming languages, as most languages only allow left-linear function definitions, moreover, this makes the algorithm easier to reason about.
+
+Following the suggestion in the aforementioned paper, we develop a syntax-oriented algorithm to decide quasi-reducibility. Using the approach from the paper, we detail a modification of their left-linear algorithm for pattern completeness and adapt it for quasi-reducibility. Firstly, a variant for strong-quasi reducibility is detailed. Strong quasi-reducibility permits matching under the root, but not in any subterm. This modification lets us move past the initial clash of root symbols when the TRS has quasi-reducible rules. This detail is explained more in detail in Section \ref{section:strong-quasi}. Further, the algorithm is adapted such that matches in any subterm is permitted, arriving at the general quasi-reducible solution. Lastly, we move past the standard first-order rewriting setting and introduce simple types and applicative syntax into the system, while not allowing for lambdas, therefore, keeping the matching algorithm decidable.
+
+The thesis is organised as follows: Chapter \ref{chapter:intro} introduces the problem at hand and section \ref{section:literature} includes a short survey of literature. Chapter \ref{chapter:preliminaries} discusses the mathematical background needed to describe and reason about the algorithms, that is, in the setting of term rewriting. Chapter \ref{chapter:alg} discusses the different versions of the linear algorithm for strong quasi-reducibility in section \ref{section:strong-quasi}, general quasi-reducibility in section \ref{section:quasi} and quasi-reducibility with applicative syntax in section \ref{section:quasi-app}. Chapter \ref{chapter:correctness} delves into the correctness of the approach, where section \ref{section:termination} includes the termination, and section \ref{section:soundness} the soundness arguments. Lastly, Chapter \ref{chapter:conclusion} gives the concluding remarks.
+
+The main theorems of the paper, Theorem \ref{theorem:termination} for termination of the decision procedure and Theorem \ref{theorem:soundness} for the soundness can be found in Chapter \ref{chapter:correctness}.
+
+\section{In Literature}\label{section:literature}
+The study of pattern completeness and related notions like relative completeness in the world of term rewriting have a long history dating back to the 80s. Following is a short survey of the literature, covering the span of the last 40 years, with some excerpts taken from a literature study conducted by the author of this paper \cite{lit-me}.
+
+In \cite{thiel}, Thiel introduces calculus of components. The complement of a term $t$ in $\mathcal{T}(\mathcal{C}, \mathcal{X})$ is defined as the finite set $T \subseteq \mathcal{T}(\mathcal{C}, \mathcal{X})$ such that $G(t) \cup G(T) = \mathcal{T}(\mathcal{C})$, i.e. the union ground terms of $t$ and $T$ equal the constructor ground terms. Their algorithm details a way to decide sufficient completeness, similar to the complement algorithm of Lazrek et al\cite{lazrek}.
+
+Decidability of quasi-reducibility was shown by Kapur et al. in \cite{kapur}. Their algorithm, however, is impractical in practice, as it has exponential best-case complexity. The \textit{complement algorithm} by Lazrek et al. is a refinement of this paper.
+
+The \textit{complement algorithm} presented by Lazrek, Lescanne, and Thiel in \cite{lazrek}, presents a mechanism to conclude whether in a TRS $\mathcal{R}$, a defined symbol $f$ (called operator in the paper) is convertible to a set of constructors, denoted as \textit{relative} completeness. The algorithm can also be used to decide quasi-reducibility and indirectly pattern completeness, as demonstrated by Example \ref{quasi-ex-alg}. The main idea behind the algorithm is to compute the \textit{complement} of matched terms, then iteratively check whether the complement can be further reduced or matched. The complement of a term $t$ means the ground terms of $t$ and the complement of $t$ equal the set of constructor terms. The complement of a substitution $\sigma$ defined as the set $C(\sigma)$ of all substitutions $\rho$ different from $\sigma$, having the same domain and mapping elements to complementary term. The complement of a term $t$ is defined as the finite set such that the ground terms of $t$ and the ground terms of the set of complement terms equal the set of constructor terms.
+
+Pattern completeness of left-linear systems can also be verified using tree automata based solution, e.g. with the framework developed by Middeldorp et al. in \cite{middeldorp} or by Bouhoula and Jacquemard in \cite{bouhoula}. The experiments done by Thiemann and Yamada in \cite{thiemann} construct tree automata $\mathcal{A}$ and $\mathcal{B}$ for their test cases and verify the language inclusion problem $\mathcal{L}(\mathcal{A}) \subseteq \mathcal{L}(\mathcal{B})$ via the framework.
+
+In \cite{aoto}, Aoto and Toyama introduce \textit{strong quasi-reducibility}, in their paper Ground Confluence Prover based on Rewriting Induction. Strong quasi-reducibility extends quasi-reducibility to term rewriting systems with non-free constructors, i.e. constructors that can be further reduced in the system. Moreover, strong quasi-reducibility, as it will be detailed in section \ref{section:strong-quasi}, allows matching to happen only directly under the root.
+
+Cynthia Kop presented and algorithm to decide quasi-reducibility in logically constrained term rewrite systems in \cite{cynthia}. These LCTRSs are of the nature e.g. "rule $x \rightarrow y$ is applicable only if $x > 5$".
+
+Bouhoula and Jacquemard constructed a tree-automata based framework to decide sufficient completeness of logically constrained term rewrite systems in \cite{bouhoula}.
+
+The Glasgow Haskell Compiler \cite{ghc} performs pattern completeness checks by enabling \texttt{-Wincomplete-patterns}. It applies, however, only to linear patterns, as non-linear patterns like \texttt{f a a = ...} are not allowed by the language, they need to be simulated by guards like \texttt{f x y | x == y = ...}.
+
+\chapter{Preliminaries}\label{chapter:preliminaries}
+This chapter covers the mathematical background for Term Rewriting and matching problems. Since the algorithms we consider model computation via term rewriting, these notions are crucial to understand and will be used through the paper.
+
+\section{Term Rewriting}
+For untyped term rewriting, we assume a countably infinite set $\mathcal{X}$ of \textit{variables} written as $x, y, z$. A \textit{signature} $\Sigma$ is a finite set consisting of function symbols written as  $f, g, h$. Each function symbol comes with a natural number, called its \textit{arity}, representing the number of arguments the function symbol takes. We write $f$ if $f$ has arity 0, and $f(x)$ if $f$ has arity 1.
+
+Given a signature $\Sigma$, we say that the set of terms over $\Sigma$ denoted as $\mathcal{T}(\Sigma, \mathcal{X})$ is the smallest set such that:
+\begin{enumerate}
+    \item If $x$ in $\mathcal{X}$, then $x \in \mathcal{T}(\Sigma, \mathcal{X})$
+    \item If $f$ in $\Sigma$ with arity $n$ $t_1, ..., t_n \in \mathcal{T}(\Sigma, \mathcal{X})$, then $f(t_1, \dots, t_n) \in \mathcal{T}(\Sigma, \mathcal{X})$
+\end{enumerate}
+
+By $\mathcal{V}ar(t)$ we denote the set of variables in $t$. \textit{Ground} terms are terms without variables. The set of ground terms over a signature $\Sigma$ is denoted as $T(\Sigma)$. A term $s$ is \textit{subterm} of $t$ if $s = t$ or $t = f(t_1, ..., t_n)$ and s is subterm of some $t_i$ given $1 \leq i \leq n$. 
+
+Given a term $t$ in $\mathcal{T}(\Sigma, \mathcal{X})$, the set of \textit{positions} of $t$, denoted as $\mathcal{P}os(t)$, is defined recursively on the definition of a term:
+\begin{enumerate}
+    \item If $t = x$ then $\mathcal{P}os(t) = \{\epsilon\}$
+    \item If $t = f(t_1, \dots, t_n)$ then $\mathcal{P}os(t) = \{\epsilon\}\ \cup \bigcup_{i=1}^{i=n} \{ip \mid p \in \mathcal{P}os(t_i)\}$
+\end{enumerate}
+
+If $p \in \mathcal{P}os(t)$, then by $t|_p$ we note the subterm of $t$ at position $p$, and by $s[t]_p$, where we replace the term in $s$ at position $p$ by $t$.
+
+A \textit{substitution} $\sigma$ is a mapping $\mathcal{X} \rightarrow \mathcal{T}(\Sigma, \mathcal{X})$. A substitution extended to a mapping from terms to terms is the result of applying substitution $\sigma$ to a term $t$, denoted as $t\sigma$ (alternative notations include $\sigma(t)$ or $t^\sigma$). We say a term $t$ matches term $s$ of there exists a substitution $\sigma$ such that $t\sigma = s$. We say terms $t$ and $s$ can be unified if there are substitutions $\sigma$ and $\gamma$ such that $t\sigma = s\gamma$. More about matching can be found in Section \ref{section:matching}.
+
+Given a signature $\Sigma$, a \textit{rewrite rule} over $\Sigma$ is a pair of terms $(\ell, r)$, denoted as $\ell \rightarrow r$ such that $\ell \notin \mathcal{X}$ and $\mathcal{V}ar(r) \subseteq \mathcal{V}ar(\ell)$. A \textit{term rewrite system} $\mathcal{R}$ is the pair $(\Sigma, R)$ where $R$ is a set of rewrite rules between $\mathcal{T}(\Sigma, \mathcal{X})$. 
+
+A \textit{rewrite relation} $\to_\mathcal{R}$ is a binary relation induced by the rewrite rules $R$. We say that a term $s$ rewrites in one step to term $t$, denoted as $s \to_\mathcal{R} t$, given that there is a rule $\ell \to r \in R$, a position $p$ in $s$ and a substitution $\sigma$, we have that $s|_p = \ell\sigma$ and $t = s[r\sigma]_p$. A \textit{rewrite sequence} is a chain of rewrite steps $s_0 \to_\mathcal{R} s_1 \to_\mathcal{R} s_2 \to_\mathcal{R} \dots$. Rewrite sequences can be finite or inifite. We write $\to_\mathcal{R}^*$ as the reflexive-transitive closure of $\to_\mathcal{R}$.
+ 
+In a TRS $\mathcal{R}$ over $\Sigma$, we take $\Sigma = \mathcal{C}\ \cup\ \mathcal{D}$ where $\mathcal{D}$ represents \textit{defined symbols} and $\mathcal{C}$ \textit{constructors}. We consider inputs to functions as constructor ground terms. We say a term rewrite system is \textit{left-linear}, if each of the variables on the left-hand side of the rewrite rules only appear once, i.e. a LHS $f(a,b)$ is allowed, whereas $f(a,a)$ is not.
+
+For sorted term rewriting, we fix a set of sorts $\mathcal{S}$. Then a sorted set of variables $\mathcal{V}$ is a set in which each element $v \in \mathcal{V}$ is associated with a sort $\iota \in \mathcal{S}$ written as $v : \iota \in \mathcal{V}$. Given a sorted signature $\mathcal{F}$ and sorted set of variables $\mathcal{V}$, we define sorted terms as $\mathcal{T}(\mathcal{F}, \mathcal{V})$ similarly to above. 
+
+\begin{example}
+    Consider the following term rewrite system to add two natural numbers.
+    We fix a set of sorts $\mathcal{S} = \{\mathbb{N}\}$ representing natural numbers.
+
+    We have a defined symbol $\mathcal{D} = \{add : \mathbb{N} \times \mathbb{N} \to \mathbb{N}\}$ and the following constructors for natural numbers in Peano arithmetic: 
+    $$\mathcal{C} = \{0 : \mathbb{N},\ s : \mathbb{N} \to \mathbb{N}\}$$
+
+    Then our TRS can be defined using the following set of rules:
+    \[
+    R = \left\{ \begin{aligned}
+       add(0, y) &\rightarrow y  \\
+       add(s(x), y) &\rightarrow s(add(x, y))
+    \end{aligned} \right\}
+    \]
+    
+\end{example}
+
+\section{Matching Problems}\label{section:matching}
+The \textit{matching problem} asks, given two terms $t$ and $\ell$, whether there exists a substitution $\sigma$ such that $t\sigma = \ell$. Different notations exist to represent matching problems, like $t \mapsto^? \ell$ or $t \lesssim^? \ell$. The direction is from $t$ to $\ell$, namely, we try to match $t$ to $\ell$ by $\sigma$. A matching problem $mp$ is represented as a set $\{(t_1 \mapsto^? \ell_1), ..., (t_n \mapsto^? \ell_n)\} \subseteq \mathcal{T}(\mathcal{F}, \mathcal{V}) \times \mathcal{T}(\mathcal{F}, \mathcal{X})$, assuming $\mathcal{V}$ and $\mathcal{X}$ do not overlap. A pattern problem $pp$ is a finite set of matching problems. 
+
+\begin{definition}
+    A program with LHSs $L$ is pattern complete if every basic ground term is matched by some $\ell \in L$.
+\end{definition}
+
+\begin{definition}
+    A program with LHSs $L$ is quasi-reducible complete if every basic ground term contains a subterm that is matched by some $\ell \in L$.
+\end{definition}
+
+\begin{definition}
+    A matching problem $mp$ is a finite set $mp = \{(t_1\mapsto^? \ell_1), \dots, (t_n\mapsto^? \ell_n)\}$ of pairs of terms. A pattern problem $pp$ is a set of matching problems $pp = \{mp_1, \dots, mp_n\}$.
+\end{definition}
+
+The matching algorithm of Thiemann and Yamada \cite{thiemann} is defined on a set of pattern problems. Namely, a if the set of pattern problems $P = \{\{\{(f(x_1,\dots,x_n)\mapsto^? \ell)\} \mid \ell \in L\} \mid f \in \mathcal{D}\}$ is complete, the program with defined symbol $f$ and LHSs $L$ is pattern complete.
+
+\begin{definition}
+    A set of pattern problems $P$ is complete if for each constructor ground substitution $\sigma$ and all pattern problems $pp \in P$ there exists a substitution $\gamma$ and matching problem $mp \in pp$ such that for all $(t\mapsto^? \ell) \in mp$ we have that $t\sigma = \ell\gamma$.
+\end{definition}
+
+These definitions form the basis of the pattern completeness algorithm by Thiemann and Yamada \cite{thiemann}. Following sections in Chapter \ref{chapter:alg} will relax and adapt these definitions to arrive at an algorithm capable of deciding (different forms of) quasi-reducibility.
+
+\chapter{Linear Algorithm for Quasi-Reducibility}\label{chapter:alg}
+This section shall explore relevant notions needed to arrive at the left-linear algorithm to decide quasi-reducibility. Starting from pattern completeness – the most strict definition - which is detailed in the paper by Thiemann and Yamada \cite{thiemann}. Following, rule modifications needed for strong quasi-reducibility is detailed – as per the paper of Aoto and Toyama \cite{aoto} – where matching is permitted directly under the root. Finally, the modification of the algorithm is given, such that general quasi-reducibility can be decided, allowing for matches to happen anywhere under the root. 
+
+In the second half of the section, a version of the algorithm is detailed which uses Term Rewrite Systems with simple types and applicative syntax but no lambdas, allowing for a more generic TRSs while keeping the algorithm decidable and syntax-oriented, as it is still in the domain of first-order rewriting.
+
+\section{Pattern Completeness}
+The main rules of the linear algorithm for pattern completeness as per \cite{thiemann} are as follows:
+
+\begin{definition}\label{def:pat-complete}
+Matching problems (denoted as $mp$) are reduced using the following rules:
+\begin{align*}
+\textbf{decompose} & & \{(f(t_1, \dots, t_n) \mapsto^? f(\ell_1, \dots, \ell_n))\} \uplus mp &\rightarrow \{(t_1\mapsto^? \ell_1), \dots, (t_n\mapsto^? \ell_n)\} \cup mp \\
+\textbf{match} & & \{(t \mapsto^? x)\} \uplus mp &\rightarrow \varnothing\ \text{ if }\ \forall (t'\mapsto^? \ell) \in mp \text{. } x \notin \text{Var}(\ell) \\
+\textbf{clash} & & \{(f(\dots) \mapsto^? g(\dots))\} \uplus mp &\rightarrow \bot_{mp}\text{ if }f \neq g
+\intertext{For pattern problems (sets of matching problems – denoted as $pp$), the following rules apply:}
+\textbf{remove-mp} & & \{\bot_{mp}\} \uplus pp &\rightarrow pp \\
+\textbf{success} & & \{\varnothing\} \uplus pp &\rightarrow \varnothing
+\intertext{Finally for sets of pattern problems (which is the input of the algorithm, denoted as $P$), the rules are as follows:}
+\textbf{failure} & & \{\varnothing\} \uplus P &\rightarrow \bot \\
+\textbf{instantiate} & & \{pp\} \uplus P &\rightarrow \text{Inst$(pp,x) \cup P$ if }\{(x, f(\dots))\} \in pp
+\end{align*}
+
+For (instantiate), whenever we have a matching problem of the form $\{(x \mapsto^? f(\dots))\}$, the algorithm would detect a clash. However, since $x$ represents some arbitrary constructor ground term, we "instantiate" $x$ by replacing it with each constructor of the form $c(x_1, \dots, x_n)$ for all $c \in \mathcal{C}$.
+
+The set $\text{Inst}(pp, x)$ generates the pattern problem:
+$$\text{Inst}(pp, x) = \{ \{ (t\sigma_{x,c}\mapsto^? \ell) \mid (t\mapsto^? \ell) \in mp \} \mid mp \in pp\}$$ given that $\sigma_{x,c} = [x \mapsto c(x_1, \dots, x_n)]$ for each constructor $c \in \mathcal{C}$ and fresh variables $x_1, \dots, x_n$.
+\end{definition}
+
+This simplified version of the algorithm, which will be further adapted to address (strong) quasi-reducibility, can be seen in Examples \ref{example:strong}, \ref{example:quasi} using tree visualization. Each pattern problem (leaves) need to be closed by $\varnothing$, or else, if there is a pattern problem that is closed by $\bot$, the system is not complete (or quasi-reducible in the adaptation).
+
+\section{Strong Quasi-Reducibility}\label{section:strong-quasi}
+Strong quasi-reducibility, as per \cite{aoto}, is defined where matching is permitted in the direct subterms of the basic term. Strong quasi-reducibility naturally implies quasi-reducibility, since if we have strong quasi-reducibility, we have a direct subterm $t'$ of input term $t$ for each LHS $\ell \in L$. Then for quasi-reducibility we can also take subterm $t'$ as a direct subterm is still a subterm of the input term $t$.
+
+When we have a (strong) quasi-reducible system, we have rules whose LHS is rooted at a constructor (see also Example \ref{example:strong} and the section about quasi-reducibility \ref{section:quasi}). We use the strong quasi-reducibility adaptation to get past the initial clash of function symbols at the root and move the matching to the direct subterms.
+
+To adapt the linear pattern completeness algorithm to decide strong quasi-reducibility, the following modifications of the rules from Definition \ref{def:pat-complete} are made:
+
+\begin{definition} Rules for strong quasi-reducibility.
+\begin{enumerate}
+    \item Whenever we have a matching problem of the form $\{(d(t_1, \dots, t_n)\mapsto^? \ell)\}$ with $d$ a defined symbol, and (decompose) is not applicable, we apply a new rule (unwrap) and move the matching to the direct subterms of $d$:
+
+    (unwrap): $\{(d(t_1,\dots,t_n)\mapsto^? \ell)\} \uplus mp \rightarrow \bigcup_{i \leq n}\{(t_i\mapsto^? \ell)\} \cup mp$ given $d \in \mathcal{D}$
+    
+    \item Otherwise the matching problem clashes, when both terms are constructors and are not the same.
+
+    (clash): $\{(c_1 \mapsto^? c_2)\} \uplus mp \rightarrow \bot_{mp}$ given $c_1, c_2 \in \mathcal{C}$ and $c_1 \neq c_2$
+\end{enumerate}
+\end{definition}
+
+The unwrap rules needs a bit of explanation. When the arity of $d \in \mathcal{D}$ is $1$, this rule can be also thought of as "lifting" the additional rules $\ell$ to the domain of the defined symbol $d$ – the same result if the original matching problem was $\{(d(t_1,\dots,t_n) \mapsto^? d(\ell))\}$, and (decompose) would have been applicable, ensuring that the computation doesn't get stuck immediately.
+
+Moreover, when the arity of $d$ is $\geq 1$, it splits the existing matching problem $mp$ into $n$ separate matching problems. This ensures that the matching moves to the direct subterms – but also that \textit{any} subterm of $d(t_1,\dots,t_n)$ can match against $\ell$. To visualize this, consider Example \ref{example:arity} and Figure \ref{fig:arity}.
+
+\begin{example}\label{example:strong} Consider a simple (strongly) quasi-reducible system with one defined symbol $f(.)$ and constructors $0$ and $s(.)$. We write a program as a term-rewrite system: 
+$$f(0) \rightarrow 0$$
+$$s(x) \rightarrow x$$
+This system is (strongly) quasi-reducible, since for each basic ground term of the form $f(t)$ with $t$ a constructor ground term, we can apply one of the rules. If $t$ is of the form $f(s(.))$ then the second rule is applicable, otherwise the first one. The system is not pattern complete, since $f(s(.))$ is not covered by the rules.
+\end{example}
+The tree reduction of Example \ref{example:strong} can be seen on Figure \ref{fig:strong}. Due to the unwrap adaptation, we can move past the initial clash of $f(.)$ and $s(.)$, and close both constructor ground substitutions $z \mapsto 0$ and $z \mapsto s(z)$.
+
+\begin{figure}[h!]
+    \centering
+\begin{forest}
+for tree={
+  align=center,
+  font=\footnotesize,
+  edge={-latex},
+  parent anchor=south,
+  child anchor=north,
+  l sep+=10pt,
+  s sep=7mm
+}
+[{$\{\{(f(z) \mapsto^? f(0))\}, \{(f(z) \mapsto^? s(x))\}\}$}
+    [{$\{\{(z \mapsto^? 0)\}, \{(f(z) \mapsto^? s(x))\}\}$},
+    edge label={node[midway, fill=white, font=\scriptsize] {decompose}}
+        [{$\{\{(z \mapsto^? 0)\}, \{(z \mapsto^? s(x))\}\}$},
+        edge label={node[midway, fill=white, font=\scriptsize] {unwrap}}
+            [{$\{\{(0 \mapsto^? 0)\}, \{(0 \mapsto^? s(x))\}\}$},
+            edge label={node[midway, fill=white, font=\scriptsize]
+            {\shortstack{instantiate\\{$\sigma = \{x \mapsto 0\}$}}}},
+            l=2.5cm
+                [{$\{\varnothing, \bot_{mp}\}$},
+                edge label={node[midway, fill=white, font=\scriptsize]
+                {match/clash}}
+                    [{$\varnothing$},
+                    edge label={node[midway, fill=white, font=\scriptsize]
+                    {success}}  
+                    ]
+                ]
+            ]
+            [{$\{\{(s(z) \mapsto^? 0)\}, \{(s(z) \mapsto^? s(x))\}\}$},
+            edge label={node[midway, fill=white, font=\scriptsize] {\shortstack{instantiate\\{$\sigma = \{x \mapsto s(z)\}$}}}},
+            l=2.5cm
+                [{$\{\bot_{mp}, \varnothing\}$},
+                edge label={node[midway, fill=white, font=\scriptsize]
+                {clash/match}}
+                    [{$\varnothing$},
+                    edge label={node[midway, fill=white, font=\scriptsize]
+                    {success}}  
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+\end{forest}
+    \caption{Tree reduction of Example \ref{example:strong}}
+    \label{fig:strong}
+\end{figure}
+
+\begin{example}\label{example:arity}
+    Consider an example where the arity of the defined symbol is $\geq$ 1.
+    Take TRS with defined symbol $add$ and constructors $0$, $s(.)$ and $g(.)$. The LHSs of the system are:
+    $$add(0, 0)\ \ add(0, s(x))\ \ add(s(x), 0)\ \ add(s(x), s(y))\ \ g(x)$$
+\end{example}
+
+Part of the tree reduction of Example \ref{example:arity} can be seen on Figure \ref{fig:arity}. Had we not split the matching problem $\{(add(a,b), g(x))\}$ into two matching problems $\{\{(a, g(x))\}, \{(b, g(x))\}\}$, the constructor ground substitution $\sigma = \{a \mapsto 0,\ b \mapsto g(z)\}$ would have failed.
+
+\begin{figure}[h!]
+    \centerline{
+\begin{forest}
+for tree={
+  align=center,
+  font=\footnotesize,
+  edge={-latex},
+  parent anchor=south,
+  child anchor=north,
+  l sep+=10pt,
+  s sep=7mm
+}
+[{$\{\{(add(a, b) \mapsto^? add(0, 0))\}, \{(add(a,b) \mapsto^? add(s(x), 0))\}, \{(add(a,b) \mapsto^? add(0, s(x)))\},$}\\{$\{(add(a,b) \mapsto^? add(s(x), s(y)))\}, \{(add(a,b) \mapsto^? g(x))\}\}$}
+    [{$\{\{\{(a \mapsto^?0), (b \mapsto^?0)\}, \{(a \mapsto^?0), (b \mapsto^? s(x))\}, \{(a \mapsto^? s(x)), (b \mapsto^? 0)\},$}\\{$\{(a \mapsto^? s(x)), (b \mapsto^? s(y))\}, \{(a \mapsto^? g(x))\}, \{(b \mapsto^? g(x))\}\}$},
+    edge label={node[midway, fill=white, font=\scriptsize] {decompose/unwrap}}
+        [{$\{\{\{(0 \mapsto^? 0), (b \mapsto^? 0)\}, \{(0 \mapsto^? 0), (b \mapsto^? s(x))\}, \{(0 \mapsto^? s(x)), (b \mapsto^? 0)\},$}\\{$\{(0 \mapsto^? s(x)), (b \mapsto^? s(y))\}, \{(0 \mapsto^? g(x))\}, \{(b \mapsto^? g(x))\}\}$},
+        edge label={node[midway, fill=white, font=\scriptsize]
+        {\shortstack{instantiate\\{$\sigma = \{a \mapsto 0\}$}}}},
+        l=2.5cm
+            [{$\dots$}, l=2cm]
+            [{$\dots$}, l=2cm]
+            [{$\{\{\{(0 \mapsto^? 0), (g(z) \mapsto^? 0)\}, \{(0 \mapsto^? 0), (g(z) \mapsto^?  s(x))\}, \{(0 \mapsto^? s(x)), (g(z) \mapsto^? 0)\},$}\\{$\{(0 \mapsto^? s(x)), (g(z) \mapsto^? s(y))\}, \{(0 \mapsto^? g(x))\}, \textcolor{red}{\{(g(z) \mapsto^? g(x))\}}\}$},
+            edge label={node[midway, fill=white, font=\scriptsize]
+            {\shortstack{instantiate\\{$\sigma = \{b \mapsto g(z)\}$}}}},
+            l=2.5cm
+            ]
+        ]
+        [{$\dots$}, l=2cm]
+        [{$\dots$}, l=2cm]
+    ]
+]
+\end{forest}
+}
+    \caption{Tree reduction of Example \ref{example:arity}}
+    \label{fig:arity}
+\end{figure}
+
+\FloatBarrier
+
+\section{Quasi-Reducibility}\label{section:quasi}
+To adapt the modified algorithm to handle (general) quasi-reducibility, we need to permit it to handle matches anywhere below the root. The modification from the previous section (i.e. the unwrap rule) is still needed, since the algorithm is syntax-oriented, and we do not want to get stuck when the outermost function symbols (one being a defined symbol of the basic ground term) clash.
+
+Furthermore, we note that all rules, apart from instantiate, handle the matching of the outermost layer of the term. Whenever all rules have been exhaustively applied, we move to the subterms via the instantiate rule. By the instantiate rule, we get multiple pattern problems, one for each constructor, which allow for further matches and clashes to be applied.
+
+In order to adapt the algorithm for quasi-reducibility, we would like to extract those LHSs of the rewrite rules of the term rewrite system, which are rooted at a constructor symbol. We then attach these patterns to the resulting pattern problem after instantiate, to allow for the newly instantiated constructors to match against them at every level of the term.
+
+Therefore, we adapt the instantiate rule:
+
+\begin{definition}\label{def:quasi-instantiate}
+Instantiate rule for quasi-reducibility
+$$\{pp\} \uplus P \Rrightarrow \text{Inst}(pp, x) \cup \text{Pat}(pp, x) \cup P$$
+where $\text{Pat}(pp, x)$, given thet set of LHSs $L$, is defined as the set:
+$$\text{Pat}(pp, x) = \{ \{(t\sigma_{x,c}\mapsto^? \ell)\} \mid \ell \in L, \text{root}(\ell) \not\in \mathcal{D}\}$$
+given that $\sigma_{x,c} = [x \mapsto c(x_1, \dots, x_n)]$ for each constructor $c \in \mathcal{C}$ and fresh variables $x_1, \dots, x_n$.
+The set $\text{Inst}(pp, x)$ still generates the pattern problem:
+$$\text{Inst}(pp, x) = \{ \{ (t\sigma_{x,c}\mapsto^? \ell) \mid (t\mapsto^? \ell) \in mp \} \mid mp \in pp\}$$
+\end{definition}
+
+To illustrate why this works, consider the following lemma:
+
+\begin{lemma}\label{lemma:quasi-pat-coincide} Quasi-reducibility and pattern completeness coincide when all left-hand sides are basic terms, i.e. all left-hand sides are rooted at a defined symbol. Given a TRS $\mathcal{R}$ with signature $\mathcal{F} = \mathcal{C} \uplus \mathcal{D}$ such that $\forall\ l \rightarrow r \in \mathcal{R}\ .\ \text{root}(l) \in \mathcal{D}$, we have that $\mathcal{R}$ is quasi-reducible $\iff$ $\mathcal{R}$ is pattern-complete.
+
+\paragraph{Proof} Pattern completeness implies quasi-reducibility follows from the definition, since t is a subterm of itself. Given that the system is quasi-reducible, then for all basic ground term $t = f(t_1,\dots,t_n)$, there's a position $p$ such that $t|p$ matches some left-hand side $\ell \in L$. Since all lhss $\ell$ have a root in $\mathcal{D}$, the only subterm $t|_p$ that can match a rule $\ell$ must be the term itself.
+\end{lemma}
+
+As we work with basic terms, the only rules that make the system quasi-reducible and not pattern complete are the ones whose LHS are rooted at a constructor. Otherwise when all LHSs of the rules are basic terms themselves, pattern completeness coincides with quasi-reducibility. Therefore, we make those constructor-headed LHSs available every step whenever a pattern problem is generated - at the beginning, or by instantiate. In other words, the constructor-headed LHSs are available in the reduction up to point where the first instantiate rule is applied. After that, we attach them manually whenever a new pattern problem is generated by instantiate, to allow for matches anywhere below the root.
+
+\begin{example}\label{example:quasi} Given the following quasi-reducible system with one defined symbol $f(.)$ and constructors $0$, $s(.)$ and $g(.)$. The LHSs are:
+$$f(0)\ \ f(s(0))\ \ f(s(s(x)))\ \ g(x)$$
+This system is quasi-reducible, since the first three rules cover the constructors $0$ and $s(.)$, while the last rule is applicable whenever we have $g(.)$. The system is not pattern complete, since $f(g(.))$ is not covered by the rules. The system is not strongly quasi-reducible, since $f(s(g(s(.))))$ cannot be reduced by allowing matches only in the direct subterms of the term.
+\end{example}
+
+\begin{figure}[h!]
+\centering
+\begin{forest}
+for tree={
+  align=center,
+  font=\footnotesize,
+  edge={-latex},
+  parent anchor=south,
+  child anchor=north,
+  l sep+=10pt,
+  s sep=7mm
+}
+[{$\{\{(f(z) \mapsto^? f(0))\}, \{(f(z) \mapsto^? f(s(0)))\}, \{(f(z) \mapsto^? f(s(s(x))))\}, \{(f(z) \mapsto^? g(x))\}\}$}
+    [{$\{\{(z \mapsto^? 0)\}, \{(z \mapsto^? s(0))\}, \{(z \mapsto^? s(s(x)))\}, \{(f(z) \mapsto^? g(x))\}\}$},
+    edge label={node[midway, fill=white, font=\scriptsize] {decompose}}
+        [{$\{\{(z \mapsto^? 0)\}, \{(z \mapsto^? s(0))\}, \{(z \mapsto^? s(s(x)))\}, \{(z \mapsto^? g(x))\}\}$},
+        edge label={node[midway, fill=white, font=\scriptsize] {unwrap}}
+            [{$\{\{(0 \mapsto^? 0)\},$}\\{$\{(0 \mapsto^? s(0))\},$}\\{$\{(0 \mapsto^? s(s(x)))\},$}\\{$\{(0 \mapsto^? g(x))\}\}$},
+            minimum width=3cm,
+            l=2.5cm,
+            edge label={node[midway, left, fill=white, font=\scriptsize] {{\shortstack{instantiate\\$\sigma = \{x \mapsto 0\}$\\$\text{Pat}(pp, x) = \{(0 \mapsto^? g(x))\}$}}}}
+                [{$\varnothing$},
+                edge label={node[midway, left, fill=white, font=\scriptsize] {match/clash}},
+                l=2.5cm
+                ]
+            ]
+            [{$\{\{(s(z) \mapsto^? 0)\},$}\\{$\{(s(z) \mapsto^? s(0))\},$}\\{$\{(s(z) \mapsto^? s(s(x)))\},$}\\{$\{(s(z) \mapsto^? g(x))\}\}$},
+            minimum width=3cm,
+            l=2.5cm,
+            edge label={node[midway, fill=white, font=\scriptsize] {{\shortstack{instantiate\\$\sigma = \{x \mapsto s(z)\}$\\$\text{Pat}(pp, x) = \{(s(z) \mapsto^? g(x))\}$}}}}
+                [{$\{\{(s(z) \mapsto^? s(0))\}, \{(s(z) \mapsto^? s(s(x)))\}\}$},
+                edge label={node[midway, fill=white, font=\scriptsize] {clash}},
+                l=2.5cm
+                    [{$\{\{(z \mapsto^? 0)\}, \{(z \mapsto^? s(x))\}\}$},
+                    edge label={node[midway, fill=white, font=\scriptsize] {decompose}}
+                        [{$\{\{(0 \mapsto^? 0)\}$}\\{$\{(0 \mapsto^? s(x))\}\},$}\\{$\textcolor{red}{\{(0 \mapsto^? g(x))\}}\}$},
+                        edge label={node[midway, left, fill=white, font=\scriptsize] {{\shortstack{instantiate\\$\sigma = \{z \mapsto 0\}$\\$\text{Pat}(pp, x) = \{(0 \mapsto^? g(x))\}$}}}},
+                        l=2.5cm,
+                        minimum width=3cm
+                            [{$\varnothing$},
+                            edge label={node[midway, left, fill=white, font=\scriptsize] {match/clash}},
+                            l=2.5cm
+                            ]
+                        ]
+                        [{$\{\{(s(z) \mapsto^? 0)\}$}\\{$\{(s(z) \mapsto^? s(x))\}\},$}\\{$\textcolor{red}{\{(s(z) \mapsto^? g(x))\}}\}$},
+                        edge label={node[midway, fill=white, font=\scriptsize] {{\shortstack{instantiate\\$\sigma = \{z \mapsto s(z)\}$\\$\text{Pat}(pp, x) = \{(s(z) \mapsto^? g(x))\}$}}}},
+                        l=2.5cm,
+                        minimum width=3cm
+                            [{$\varnothing$},
+                            edge label={node[midway, fill=white, font=\scriptsize] {match/clash}},
+                            l=2.5cm
+                            ]
+                        ]
+                        [{$\{\{(g(z) \mapsto^? 0)\}$}\\{$\{(g(z) \mapsto^? s(x))\}\},$}\\{$\textcolor{red}{\{(g(z) \mapsto^? g(x))\}}\}$},
+                        edge label={node[midway, right, fill=white, font=\scriptsize] {{\shortstack{instantiate\\$\sigma = \{z \mapsto g(z)\}$\\$\text{Pat}(pp, x) = \{(g(z) \mapsto^? g(x))\}$}}}},
+                        l=2.5cm,
+                        minimum width=3cm
+                            [{$\varnothing$},
+                            edge label={node[midway, right, fill=white, font=\scriptsize] {match/clash}},
+                            l=2.5cm
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+            [{$\{\{(g(z) \mapsto^? 0)\},$}\\{$\{(g(z) \mapsto^? s(0))\},$}\\{$\{(g(z) \mapsto^? s(s(x)))\},$}\\{$\{(g(z) \mapsto^? g(x))\}\}$},
+            minimum width=3cm,
+            l=2.5cm,
+            edge label={node[midway, right, fill=white, font=\scriptsize] {{\shortstack{instantiate\\$\sigma = \{x \mapsto g(z)\}$\\$\text{Pat}(pp, x) = \{(g(z) \mapsto^? g(x))\}$}}}}
+                [{$\varnothing$},
+                edge label={node[midway, right, fill=white, font=\scriptsize] {match/clash}},
+                l=2.5cm
+                ]
+            ]
+        ]
+    ]
+]
+\end{forest}
+    \caption{Tree reduction of Example \ref{example:quasi}}
+    \label{fig:quasi}
+\end{figure}
+
+The reduction of the pattern problem generated in Example \ref{example:quasi} can be seen on Figure \ref{fig:quasi}. The patterns of the system are $\text{Pat}(pp, x) = \{g(x)\}$. After the first instantiate, this pattern is still available in all resulting pattern problem. The algorithm clears the terms of the form $f(0)$ and $f(g(.))$. However, after the second instantiate, we already moved past the initial pattern problem, therefore the LHSs $g(x)$ is not available anymore, and we would have failed to match patterns of the form $f(s(g(\dots)))$. By attaching $\text{Pat}(pp, x)$ to the pattern problem generated at the instantiate step, we clear the terms of the form $f(s(.))$. The crucial parts are highlighted red, the attached pattern of $g(x)$ makes the system quasi-reducible.
+
+\FloatBarrier
+
+\section{Applicative Term Rewriting}\label{section:quasi-app}
+
+From this section onwards we consider sorted term-rewriting. Moreover, we extend the language of a term, by allowing applicative syntax (which we take as left-associative):
+\begin{center}
+    \texttt{t ::= x | f | f t}
+\end{center}
+
+We adapt the rules of the quasi-reducibility algorithm to handle applicative:
+
+\begin{definition}\label{def:applicative-decompose}
+Applicative decompose (decompose-app):
+\begin{align*}
+\{(f\ t_1 \dots t_n \mapsto^? f\ \ell_1 \dots \ell_n)\} \uplus mp \rightarrow \{(f\ t_1 \dots\ t_{n-1} \mapsto^? f\ \ell_1 \dots\ \ell_{n-1}), (t_n\mapsto^? \ell_n)\} \cup mp
+\end{align*}
+\end{definition}
+
+\begin{definition}\label{def:applicative-unwrap}
+Applicative unwrap (unwrap-app):
+\begin{align*}
+\{(d\ t_1\ \dots\ t_n\mapsto^? \ell)\} \uplus mp 
+&\rightarrow
+\begin{cases}
+ \mathrm{Unwrap}(d\ \dots\mapsto^? \ell) \cup mp &  \text{if the set Unwrap is non-empty} \\
+\bot_{mp} & \text{otherwise}
+\end{cases} \\
+\text{such that }\mathrm{Unwrap}(d\ t_1\ \dots\ t_n\mapsto^? \ell) &= \bigcup_{i=1}^n \{(t_i\mapsto^? \ell) \mid t_i : \iota \wedge \ell : \iota\}
+\end{align*}
+\end{definition}
+
+These rules mirror the non-applicative setting, we apply unwrap-app when decompose-app is not applicable, i.e. when there is a clash in $d$ and $\text{root}(\ell)$. Moreover, since we're in a typed setting, we only allow unwrap-app to create well-typed matching problems, otherwise the matching problem rewrites to $\bot_{mp}$. Furthermore, we only allow well-typed matching problems to be generated by instantiate. Therefore, we make clear in the definition, that only those constructors and LHSs can be added to the sets \textit{Inst} and \textit{Pat}, that match the type of the variable to be instantiated:
+
+\begin{definition}\label{def:app-instantiate}
+Well-typed instantiation rule: given $x : \iota_0 \in \mathcal{V}$, where $\text{Pat}(pp, x)$, given thet set of LHSs $L$, is defined as the set:
+$$\text{Pat}(pp, x) = \{ \{(t\sigma_{x,c}\mapsto^? \ell)\} \mid \ell \in L,\ \text{root}(\ell) \not\in \mathcal{D},\ \ell : \iota_0\}$$
+given that $\sigma_{x,c} = [x \mapsto c(x_1, \dots, x_n)]$ for each constructor $c : \iota_1 \to \dots \to \iota_n \to \iota_0 \in \mathcal{C}$ and fresh variables $x_1 : \iota_1, \dots, x_n : \iota_n \in \mathcal{V}$.
+The set $\text{Inst}(pp, x)$ still generates the pattern problem:
+$$\text{Inst}(pp, x) = \{ \{ (t\sigma_{x,c}\mapsto^? \ell) \mid (t\mapsto^? \ell) \in mp \} \mid mp \in pp\}$$
+\end{definition}
+
+Moreover, note that we also allow applicative constructors by letting $c : \iota_1 \to \dots \to \iota_n \to \iota_0 \in \mathcal{C}$.
+
+Consider the following example of pattern-complete TRS with applicative:
+\begin{example}\label{ex:app-quasi-reducible}
+    Take sort of $\mathbf{List}\ \mathbb{N}$ and constructors $\text{Nil} : \mathbf{List}\ \mathbb{N}$ and $cons : \mathbb{N} \to \mathbf{List}\  \mathbb{N} \to \mathbf{List}\  \mathbb{N}$. Define the function $map : (\mathbb{N} \to \mathbb{N}) \to \mathbf{List}\ \mathbb{N} \to \mathbf{List}\ \mathbb{N}$:
+    \begin{align*}
+        map\ f\ \text{Nil} &\to \text{Nil} \\
+        map\ f\ (cons\ n\ l) &\to cons\ (f\ n)\ (map\ f\ l)
+    \end{align*}
+\end{example}
+We show that the map function is pattern complete (therefore also quasi-reducible), the reduction can be seen on Figure \ref{fig:app-quasi-reducible}.
+
+\begin{figure}[h!]
+\centering
+\begin{forest}
+for tree={
+  align=center,
+  font=\footnotesize,
+  edge={-latex},
+  parent anchor=south,
+  child anchor=north,
+  l sep+=10pt,
+  s sep=7mm
+}
+[{$\{\{(map\ f'\ l' \mapsto^? map\ f\ Nil)\}, \{(map\ f'\ l' \mapsto^? map\ f\ (cons\ n\ l))\}\}$}
+    [{$\{\{(map\ f' \mapsto^? map\ f), (l' \mapsto^? Nil)\}, \{(map\ f' \mapsto^? map\ f), (l' \mapsto^? cons\ n\ l)\}\}$},
+    edge label={node[midway, fill=white, font=\scriptsize] {decompose-app}}
+    [{$\{\{(map \mapsto^? map), (f' \mapsto^? f), (l' \mapsto^? Nil)\}, \{(map \mapsto^? map), (f' \mapsto^? f), (l' \mapsto^? cons\ n\ l)\}\}$},
+    edge label={node[midway, fill=white, font=\scriptsize] {decompose-app}}
+    [{$\{\{(l' \mapsto^? Nil)\}, \{(l' \mapsto^? cons\ n\ l)\}\}$},
+    edge label={node[midway, fill=white, font=\scriptsize] {match}}
+        [{$\{\{(Nil \mapsto^? Nil)\}, \{(Nil \mapsto^? cons\ n\ l)\}\}$},
+        edge label={node[midway, left, fill=white, font=\scriptsize] {\shortstack{instantiate\\$\sigma = \{l' \mapsto Nil\}$}}},
+        l=2cm
+            [{$\varnothing$},
+            edge label={node[midway, fill=white, font=\scriptsize] {match/clash}}
+            ]
+        ]
+        [{$\{\{(cons\ n'\ l' \mapsto^? Nil)\}, \{(cons\ n'\ l' \mapsto^? cons\ n\ l)\}\}$},
+        edge label={node[midway, right, fill=white, font=\scriptsize] {\shortstack{instantiate\\$\sigma = \{l' \mapsto cons\ n'\ l'\}$}}},
+        l=2cm
+            [{$\{\{(cons\ n' \mapsto^? cons\ n), (l' \mapsto^? l)\}\}$},
+            edge label={node[midway, fill=white, font=\scriptsize] {clash/decompose-app}}
+            [{$\{\{(cons \mapsto^? cons), (n' \mapsto^? n), (l' \mapsto^? l)\}\}$},
+            edge label={node[midway, fill=white, font=\scriptsize] {decompose-app}}
+            [{$\varnothing$},
+            edge label={node[midway, fill=white, font=\scriptsize] {match}}
+            ]
+            ]
+            ]
+        ]
+    ]
+    ]
+    ]
+]
+\end{forest}
+    \caption{Tree reduction of Example \ref{ex:app-quasi-reducible}}
+    \label{fig:app-quasi-reducible}
+\end{figure}
+
+
+Moreover, consider a quasi-reducible version of this system:
+\begin{example}\label{ex:app-quasi}
+Quasi-reducible map with LHSs:
+$$\{map\ f\ \text{Nil},\ cons\ n\ l\}$$
+\end{example}
+
+We show that the system is quasi-reducible, the reduction can be seen on Figure \ref{fig:app-quasi}.
+
+\begin{figure}[h]
+\centering
+\begin{forest}
+for tree={
+  align=center,
+  font=\footnotesize,
+  edge={-latex},
+  parent anchor=south,
+  child anchor=north,
+  l sep+=10pt,
+  s sep=7mm
+}
+[{$\{\{(map\ f'\ l' \mapsto^? map\ f\ Nil)\}, \{(map\ f'\ l' \mapsto^? cons\ n\ l)\}\}$}
+    [{$\{\{(map \mapsto^? map), (f' \mapsto^? f), (l' \mapsto^? Nil)\}, \{(map\ f'\ l' \mapsto^? cons\ n\ l)\}\}$},
+    edge label={node[midway, fill=white, font=\scriptsize] {decompose-app}}
+        [{$\{(l' \mapsto^? Nil)\}, \{(map\ f'\ l' \mapsto^? cons\ n\ l)\}\}$},
+        edge label={node[midway, fill=white, font=\scriptsize] {match}}
+        [{$\{\{(map \mapsto^? map), (f' \mapsto^? f), (l' \mapsto^? Nil)\}, \{(l' \mapsto^? cons\ n\ l)\}\}$},
+        edge label={node[midway, fill=white, font=\scriptsize] {unwrap-app}}
+            [{$\{\{(Nil \mapsto^? Nil)\}$}\\{$\{(Nil \mapsto^? cons\ n\ l)\}\}$},
+            edge label={node[midway, left, fill=white, font=\scriptsize] {\shortstack{instantiate\\$\sigma = \{l' \mapsto Nil\}$}}},
+            l=2cm
+            [{$\varnothing$},
+            edge label={node[midway, left, fill=white, font=\scriptsize] {match}}
+            ]
+            ]
+            [{$\{\{(cons\ n'\ l' \mapsto^? Nil)\}$}\\{$\{(cons\ n'\ l' \mapsto^? cons\ n\ l)\}\}$},
+            edge label={node[midway, right, fill=white, font=\scriptsize] {\shortstack{instantiate\\$\sigma = \{l' \mapsto cons\ n'\ l'\}$}}},
+            l=2cm
+            [{$\varnothing$},
+            edge label={node[midway, left, fill=white, font=\scriptsize] {match}}
+            ]
+            ]
+        ]
+        ]
+    ]
+]
+\end{forest}
+    \caption{Tree reduction of Example \ref{ex:app-quasi}}
+    \label{fig:app-quasi}
+\end{figure}
+
+\chapter{Correctness}\label{chapter:correctness}
+This section shows our two main results: the termination of the quasi-reducibility algorithm in Section \ref{section:termination} with Theorem \ref{theorem:termination}, and the soundness of the algorithm in Section \ref{section:soundness} with Theorem \ref{theorem:soundness}.
+
+\section{Termination}\label{section:termination}
+To prove termination, building on the argumentation in \cite{thiemann}, we will construct a measure representing the "size" of a pattern problem by counting function symbols and show that each rule weakly decreases this measure while the instantiate rule strictly decreases it. Therefore, the instantiate rule cannot be applied infinitely often. The other rules match and clash are easily shown to be terminating, since they decrease the number of function symbols. Lastly, rules decompose and unwrap can also only be applied finitely often, as we assume terms to be finite.
+
+\begin{definition}\label{def:termination}
+Measure for size of pattern problems. Define $\lvert (t\mapsto^? \ell) \rvert$ as the size of a matching problem $(t\mapsto^? \ell) \in mp$, cases to be evaluated in order:
+\begin{enumerate}
+    \item $\lvert (x\mapsto^? \ell) \rvert = $ number of functions symbols in $\ell$ given $x \in \mathcal{V}ar$
+    \item $\lvert (f(t_1, \dots, t_n) \mapsto^? f(\ell_1, \dots\mapsto^? \ell_n)) \rvert = \sum_{i=1}^n \lvert (t_i\mapsto^? \ell_i) \rvert$
+    \item $\lvert (d(t_1, \dots, t_n)\mapsto^? \ell) \rvert = \sum_{i=1}^n \lvert (t_i\mapsto^? \ell) \rvert$ given $d \in \mathcal{D}$
+    \item $\lvert (t\mapsto^? \ell) \rvert = 0$ otherwise
+\end{enumerate}
+
+These four cases correspond to rules (instantiate) (1), (decompose) (2), (unwrap) (3) and (match) or (clash) (4).
+
+Special matching problems like $\bot_{mp}$ and the empty problem $\varnothing$ have by definition measure $0$.
+
+For pattern problems $pp$, define $\lvert pp \rvert = \sum_{mp \in pp} \sum_{(t\mapsto^? \ell) \in mp} \lvert (t\mapsto^? \ell) \rvert$
+
+For sets of pattern problems $P$, we write $\lvert P \rvert$ as the size of a set of pattern problems. We define relation $\succ$ on sets of pattern problems $P$ via the multiset extension $>^{mul}$ of $>$ as: 
+$$\lvert P \rvert \succ \lvert P' \rvert \iff \{\lvert pp \rvert \mid pp \in P\} >^{mul} \{\lvert pp \rvert \mid pp \in P'\}$$
+\end{definition}
+
+By construction, all rules have the same measure before and after application, except the instantiate rule. The idea behind the measure for instantiate, is to replace the element in the multiset by one or more strictly smaller elements. Consider the following lemma:
+
+\begin{lemma}\label{lemma:termination}
+Instantiate rule strictly decreases with respect to $|(t\mapsto^? \ell)|$.
+
+\paragraph{Proof} To prove that the instantiate rule strictly decreases the measure, we work case-by-case. When (instantiate) is applicable, the pattern problem is of the form $P = \{\{\{(x\mapsto^? \ell)\},\ \dots\}\}$ where $x \in \mathcal{V}ar$ and $\ell \notin \mathcal{V}ar$. After (instantiate) is applied, we get the following set of pattern problems of the form: $P' = \{\{\{(c(\dots)\mapsto^? \ell)\}\} \mid c \in \mathcal{C}\}$, i.e. one pattern problem per constructor, generated by the sets Inst and Pat. Assume that the cardinality of $P$ is $n$, then the cardinality of $P'$ is $n * \lvert \mathcal{C} \rvert$. Since the new pattern problems are of the form $\{\{(c(\dots)\mapsto^? \ell)\}\}$ for both pattern problems from Inst and Pat, only cases (2) or (4) are applicable in the measure definition. In case (2), when (decompose) is applicable, the resulting matching problem consists of a number of function symbols one less than before. Lastly, when case (4), i.e. (match) or (clash) are applicable, the resulting matching problem has measure $0$ which is strictly less than the measure of $\{(x\mapsto^? \ell)\}$ if (instantiate) was applied. Therefore, the (instantiate) rule strictly decreases the measure by replacing an element of the multiset by one or more smaller elements.
+\end{lemma}
+
+\begin{example}
+Measure for match rule
+\begin{align*}
+    P &= \{\{\{(0 \mapsto^? x)\}\}\} \Rrightarrow \{\{\varnothing\}\} = P' & \\
+    \lvert P \rvert &= \{\lvert (0 \mapsto^? x) \rvert = 0\} = \lvert P' \rvert \implies \lvert P \rvert \succeq \lvert P' \rvert \\
+    \intertext{Measure for clash rule}
+    P &= \{\{\{(0 \mapsto^? s(x))\}\}\} \Rrightarrow \{\{\{\bot_{mp}\}\}\} = P' & \\
+    \lvert P \rvert &= \{\lvert (0 \mapsto^? s(x)) \rvert = 0\} = \lvert P' \rvert \implies \lvert P \rvert \succeq \lvert P' \rvert \\
+    \intertext{Measure for unwrap rule}
+    P &= \{\{\{(even(z) \mapsto^? s(p(x)))\}\}\} \Rrightarrow \{\{\{(z \mapsto^? s(p(x)))\}\}\} = P' & \\
+    \lvert P \rvert &= \{\lvert (z \mapsto^? s(p(x))) \rvert = 2\} = \lvert P' \rvert \implies \lvert P \rvert \succeq \lvert P' \rvert \\
+    \intertext{Measure for unwrap rule with arity $\geq$ 1}
+    P &= \{\{\{(add(a, b) \mapsto^? g(x))\}\}\} \Rrightarrow \{\{\{(a \mapsto^? g(x))\}, \{(b \mapsto^? g(x))\}\}\} = P' & \\
+    \lvert P \rvert &= \{\lvert (a \mapsto^? g(x)) \rvert + \lvert (b \mapsto^? g(x)) \rvert = 2\} = \lvert P' \rvert \implies \lvert P \rvert \succeq \lvert P' \rvert \\
+    \intertext{Measure for decompose rule}
+    P &= \{\{\{(f(a) \mapsto^? f(0))\}\}\} \Rrightarrow \{\{\{(a \mapsto^? 0)\}\}\} = P' & \\
+    \lvert P \rvert &= \{ \lvert (a \mapsto^? 0) \rvert = 1\} =  \lvert P' \rvert \implies \lvert P \rvert \succeq \lvert P' \rvert\\
+    \intertext{Measure for instantiate rule}
+    P &= \{\{\{(a \mapsto^? 0)\}, \{(a \mapsto^? s(x))\}\}\} & \\
+    &\Rrightarrow \{\{\{(0 \mapsto^? 0)\}, \{(0 \mapsto^? s(x))\}\},\ \{\{(s(z) \mapsto^? 0)\}, \{(s(z) \mapsto^? s(x))\}\}\} = P' & \\
+    \lvert P \rvert &= \{2\},\ \lvert P' \rvert = \{0, 0\} \implies \lvert P \rvert \succ \lvert P' \rvert
+\end{align*}
+\end{example}
+
+We can now state the main theorem of this section:
+
+\begin{theorem}\label{theorem:termination}
+    The decision procedure for quasi-reducibility in Section \ref{section:quasi} is terminating.
+
+    \paragraph{Proof} See Lemma \ref{lemma:termination} and paragraph above Definition \ref{def:termination}.
+\end{theorem}
+
+\section{Soundness}\label{section:soundness}
+To prove soundness of the algorithm, we detail what it means for a pattern problem to be \textit{quasi-reducible} and show that that property is preserved by the rewrite rules.
+
+\begin{definition} 
+A set of pattern problems $P$ is \textit{quasi-reducible}, if for every constructor ground substitution $\sigma$ and pattern problem $pp \in P$, there is some matching problem $mp \in pp$ and a substitution $\gamma$, such that for every pair $(t\mapsto^? \ell) \in mp$ either:
+\begin{itemize}
+    \item $t\sigma = \ell\gamma$, or
+    \item there exists a position $p$ such that the subterm $t\sigma|_p = \ell\gamma$ 
+\end{itemize}
+\end{definition}
+
+\begin{theorem}\label{theorem:quasi-reducible}
+Let $A$ be the modified algorithm for quasi-reducibility,  and $P$ the input pattern problem. Then we have that $P$ is quasi-reducible iff $P \xrightarrow{A} P'$ is quasi-reducible.
+
+\paragraph{Proof} We show case by case that the quasi-reducibility of $P$ is preserved by the rules.
+
+\textsc{Case - match} 
+\begin{quote}
+    Given quasi-reducible pattern problem $pp$, fix constructor ground substitution $\sigma$. By quasi-reduciblity, we have a matching problem $mp \in pp$ and substitution $\gamma$ such that for all $\{(t\mapsto^? \ell)\} \in mp$ we have that $t\sigma = \ell\gamma$ or some subterm matches.
+    Before applying match we have some $(t \mapsto^? x) \in mp$ such that $t\sigma = x\gamma$. Therefore, we can take $\gamma = \{x \mapsto t\sigma\}$. Let $pp'$ be the pattern problem after removing $mp$ from $pp$. Then $pp'$ is quasi-reducible iff. $pp$ is quasi-reducible.
+\end{quote}
+
+\textsc{Case - clash} 
+\begin{quote}
+    Given quasi-reducible pattern problem $pp$, fix constructor ground substitution $\sigma$. Take $mp \in pp$. Before applying clash, we have some $\{(f(.) \mapsto^? g(.))\} \in mp$ such that $f \neq g$. Therefore, the matching problem $mp$ is incomplete. By quasi-reducibility of $pp$, we have some $mp' \neq mp \in pp$ that is quasi-reducible. Let $pp'$ be the pattern problem after removing $mp$ from $pp$. Then $pp'$ is quasi-reducible iff. $pp$ is quasi-reducible.
+\end{quote}
+
+\textsc{Case - decompose} 
+\begin{quote}
+    Given quasi-reducible pattern problem $pp$, fix constructor ground substitution $\sigma$. Take $mp \in pp$. Before applying decompose we have some $\{(f(t_1, \dots, t_n) \mapsto^? f(\ell_1, \dots, \ell_n))\} \in mp$. By quasi-reducibility we have that $f(t_1, \dots, t_n)\sigma = f(\ell_1, \dots, \ell_n)\gamma$ or some subterm matches. This implies that for all $t_i\sigma$ we have corresponding $\ell_i\gamma$ such that $t_i\sigma=\ell_i\gamma$. After applying decompose we have $mp' = \{(t_1\mapsto^? \ell_1), \dots, (t_n\mapsto^? \ell_n)\}$. $mp'$ is complete iff. $mp$ is complete. Then $pp'$ is quasi-reducible iff. $pp$ is quasi-reducible.
+\end{quote}
+
+\textsc{Case - unwrap} 
+\begin{quote}
+    Given matching problem $mp = \{(d(t_1,\dots,t_n)\mapsto^? \ell)\}$ such that $\text{root}(\ell) \not\in \mathcal{D}$, then the pattern problem $pp \ni mp$ is quasi-reducible iff. there exists a position $p$ and substitution $\gamma$ such that $d(t_1\sigma,\dots,t_n\sigma)|_p = \ell\gamma$, since $\text{root}(d) \neq \text{root}(\ell)$.
+
+    After unwrap we get $\{(d(t_1,\dots,t_n)\mapsto^? \ell)\} \rightarrow \{\{(t_1\mapsto^? \ell)\}, \dots, \{(t_n\mapsto^? \ell)\}\} = pp'$. If $d(t_1\sigma,\dots,t_n\sigma)|_p = \ell\gamma$, then there exists a subterm $t_i\sigma$ such that $t_i\sigma|_p = \ell\gamma$. Therefore, the resulting pattern problem $pp'$ is quasi-reducible, iff. the original pattern problem $pp$ is quasi-reducible.
+\end{quote}
+
+\textsc{Case - instantiate}
+\begin{quote}
+    Assume we have $pp = \{\{(x\mapsto^? \ell)\}\}$ before applying the instantiate rule, and fix constructor ground substitution $\sigma$. The rule rewrites pattern problem $pp$ to $pp' = \text{Inst}(pp, x)\ \cup\ \text{Pat}(pp, x)$. The set Inst covers the outermost constructors, whereas the set Pat covers all constructor-headed LHSs.
+    Assume that after applying the rule, there exists some $mp \in pp$ such that we have $(t\sigma\mapsto^? \ell) \in mp$.
+
+    \textsc{Case I:}
+    Assume $\text{Inst}(pp, x)$ generated a complete pattern problem $pp'$ given constructor ground substitution $\sigma$ such that there exists $mp' \in pp'$ and for all $(t\mapsto^? \ell) \in mp'$ we have that $t\sigma = \ell\gamma$. Then $pp'$ is quasi-reducible iff. $pp$ is quasi-reducible.
+
+    \textsc{Case II:}
+    Assume $\text{Pat}(pp, x)$ generated a complete pattern problem $pp'$ given constructor ground substitution $\sigma$ such that there exists $mp' \in pp'$ and for all $(t\mapsto^? \ell) \in mp'$ we have that $t\sigma = \ell\gamma$. Then $pp'$ is quasi-reducible iff. $pp$ is quasi-reducible.
+
+    \textsc{Case III:}
+    Pattern problem generated $pp'$ generated by $\text{Inst}(pp, x)\ \cup\ \text{Pat}(pp, x)$ is incomplete, therefore $t\sigma \neq \ell\gamma$. Then the original pattern problem cannot be quasi-reducible.
+\end{quote}
+\end{theorem}
+
+From Lemma \ref{lemma:quasi-pat-coincide} and the Definition \ref{def:quasi-instantiate} of Pat, it follows that there are no other cases, i.e. if a pattern problem is quasi-reducible, after an instantiate step, we get a pattern problem that is either complete by the set Inst, or complete by the set Pat, otherwise the pattern problem is not quasi-reducible. In other words, if the TRS is pattern complete, the set Pat is empty and the algorithm correctly verifies quasi-reducibility. Furthermore, when the TRS is quasi-reducible, the quasi-reducibility of the system is introduced by the rules in the set Pat.
+
+We can now state the main theorem of this section:
+
+\begin{theorem}\label{theorem:soundness}
+    The decision procedure for quasi-reducibility in Section \ref{section:quasi} is sound.
+
+    \paragraph{Proof} See Theorem \ref{theorem:quasi-reducible} and paragraph below the proof.
+\end{theorem}
+
+\chapter{Conclusion}\label{chapter:conclusion}
+The thesis has presented an extension of the pattern completeness algorithm by Thiemann and Yamada \cite{thiemann}. The original paper dealt with pattern completeness, in some sense, one of the strictest guarantee one can have regarding the correctness of a function. By ensuring pattern completeness we not only ensure that computation doesn't get stuck, but also that our function computes a value for all the possible input. A more relaxed notion of it is quasi-reducibility, in which we permit matches below the root. 
+
+The thesis presented three variations of the algorithm: one dealing with \textit{strong quasi-reducibility} in Section \ref{section:strong-quasi}, one extending it to general quasi-reduciblity in Section \ref{section:quasi} and a third, applying the algorithm to higher-order applicative term rewriting in Section \ref{section:quasi-app}. The main theorems are discussed in Chapter \ref{chapter:correctness}, where Section \ref{section:termination} discusses the termination argument and Section \ref{section:soundness} the soundness of the algorithm.
+
+The main results of the paper are Theorem \ref{theorem:termination} detailing the termination of the quasi-reducibility decision procedure and Theorem \ref{theorem:soundness} detailing the soundness of the algorithm.
+
+Further research could explore quasi-reducibility and related notions in higher-order rewriting while also maintaining some restrictions to keep the algorithms decidable. Moreover, the complexity of such algorithms is also of importance, as can be seen in a recent paper by Thiemann in IWC 2025 \cite{iwc2025}.
+\printbibliography
+
+\end{document}

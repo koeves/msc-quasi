@@ -1,0 +1,98 @@
+\begin{frame}[fragile]{Introduction I/II}
+Pattern completeness is crucial for functional programming:
+\begin{lstlisting}
+first :: [a] -> Maybe a
+first (x:_) = Just x
+
+print $ first []
+\end{lstlisting}
+\onslide<2->{
+This would blow up!
+}
+\vspace{0.5cm}
+
+\onslide<3->{
+In some cases, it's enough to ensure that computation doesn't get stuck (\textit{quasi-reducibility})
+}
+\end{frame}
+
+\begin{frame}{Introduction II/II}
+\begin{itemize}
+    \item Analyse programs as term rewrite systems
+    \item Analyse term rewrite systems to decide pattern completeness (like our function \texttt{first})
+    \item Relax the notion of pattern completeness to quasi-reducibility
+    \item Develop an algorithm to decide quasi-reducibility
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Term Rewriting}
+\begin{itemize}
+    \item Analyse programs as term-rewrite systems
+    \begin{itemize}
+        \item Consider \textit{left-linear} TRSs
+        \item Variables are constructor ground terms
+    \end{itemize}
+    \item Goal: decide when a function $f$ (like our function \texttt{first}) is \textit{pattern complete / quasi-reducible}
+\end{itemize}
+
+\begin{block}{Example}
+    TRS $\mathcal{R}$ with $\mathcal{D} = \{\text{first}\}$, $\mathcal{C} = \{\texttt{[]}, \texttt{:}\}$ \\
+    $R = \{\text{first}\ (x\ \texttt{:}\ xs) \to x\}$
+\end{block}
+\end{frame}
+
+\begin{frame}{Pattern Completeness and Quasi-reducibility}
+
+\only<1>{
+\begin{block}{Definition}
+    TRS $\mathcal{R}$ with lhss $L$ is \textit{pattern complete} if every ground term is matched by some $\ell \in L$.
+\end{block}
+\begin{block}{Example}
+    TRS $\mathcal{R}$ with $\mathcal{D} = \{\text{first}\}$, $\mathcal{C} = \{\texttt{[]}, \texttt{:}\}$ \\
+    $R = \{\text{first}\ (x\ \texttt{:}\ xs) \to x,\ \textcolor{red}{\text{first}\ \texttt{[]} \to \texttt{[]}}\}$
+\end{block}
+}
+
+\only<2>{
+\begin{block}{Definition}
+    TRS $\mathcal{R}$ with lhss $L$ is \textit{quasi-reducible} if every ground term has a subterm that is matched by some $\ell \in L$.
+\end{block}
+\begin{block}{Example}
+    TRS $\mathcal{R}$ with $\mathcal{D} = \{\text{first}\}$, $\mathcal{C} = \{\texttt{[]}, \texttt{:}\}$ \\
+    $R = \{\text{first}\ (x\ \texttt{:}\ xs) \to x,\ \textcolor{red}{\texttt{[]} \to \texttt{[]}}\}$
+\end{block}
+}
+\end{frame}
+
+\begin{frame}{Matching I/II}
+\begin{block}{Definition}
+    \textit{Matching problem}: given terms $s$ and $t$, find substitution $\sigma$ from $\mathcal{X}$ to $\mathcal{T}(\Sigma, \mathcal{X})$ such that $s\sigma = t$.
+\end{block}
+
+\begin{block}{Example}
+\begin{itemize}
+    \item $z \mapsto^?0$. Take $\sigma = \{z \mapsto 0\}$
+    \item $\text{even}(z) \mapsto^? 0$. No such $\sigma$ exists
+    \item $f(a, b) \mapsto^? f(x, x)$. Take $\sigma = \{a \mapsto x, b \mapsto x\}$
+    \item $f(a, a) \mapsto^? f(x, s(x))$. No such $\sigma$ exists
+\end{itemize}
+
+\end{block}
+\end{frame}
+
+\begin{frame}{Matching II/II}
+For our algorithm:
+\begin{itemize}
+    \item Match input term $f(z_1, ..., z_n)$ to lhss of TRS
+    \item If for all \textit{constructor ground substitution} for $z_i$ we find a match: $f$ is quasi-reducible
+    \item Find $\sigma$ s.t. $\forall \ell \in L.\ f(z_1, ..., z_n)\sigma = \ell$
+\end{itemize}
+
+\begin{block}{Example}
+Using TRS $\mathcal{R}$ for each LHS and constructor ground substitution for $z$, we check:
+\begin{itemize}
+    \item $\text{first}(z) \mapsto^? \text{first}(x\ \texttt{:}\ xs)$
+\end{itemize}
+\onslide<2->{Take $\sigma = \{z \mapsto x\ :\ xs\}$}
+\end{block}
+\end{frame}

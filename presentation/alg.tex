@@ -1,0 +1,636 @@
+\section{Quasi-Reducibility Algorithm}
+% \begin{frame}{Pattern Completeness – Thiemann and Yamada}
+% \begin{columns}
+%     \begin{column}{0.7\textwidth}
+%       \begin{tiny}
+% \begin{figure}
+%     \centering
+% \begin{forest}
+% for tree={
+%   scale=0.8,
+%   transform shape,
+%   align=center,
+%   font=\footnotesize,
+%   edge={-latex},
+%   parent anchor=south,
+%   child anchor=north,
+%   l sep+=10pt,
+%   s sep=7mm
+% }
+% [\only<1>{\textcolor{red}{{$\{\{(f(z), f(0))\}, \{(f(z), s(x))\}\}$}}}
+%  \only<2->{$\{\{(f(z), f(0))\}, \{(f(z), s(x))\}\}$}
+%     [{$\{\{(z, 0)\}, \{(f(z), s(x))\}\}$},
+%     edge label={node[midway, fill=white, font=\tiny] {decompose}}
+%         [{$\{\{(z, 0)\}, \{(z, s(x))\}\}$},
+%         edge label={node[midway, fill=white, font=\tiny] {unwrap}}
+%             [{$\{\{(0, 0)\}, \{(0, s(x))\}\}$},
+%             edge label={node[midway, fill=white, font=\tiny]
+%             {\shortstack{instantiate\\{$\sigma = \{x \mapsto 0\}$}}}},
+%             l=2cm
+%                 [{$\{\varnothing, \bot_{mp}\}$},
+%                 edge label={node[midway, fill=white, font=\tiny]
+%                 {match/clash}}
+%                     [{$\varnothing$},
+%                     edge label={node[midway, fill=white, font=\tiny]
+%                     {success}}  
+%                     ]
+%                 ]
+%             ]
+%             [{$\{\{(s(z), 0)\}, \{(s(z), s(x))\}\}$},
+%             edge label={node[midway, fill=white, font=\tiny] {\shortstack{instantiate\\{$\sigma = \{x \mapsto s(z)\}$}}}},
+%             l=2cm
+%                 [{$\{\bot_{mp}, \varnothing\}$},
+%                 edge label={node[midway, fill=white, font=\tiny]
+%                 {clash/match}}
+%                     [{$\varnothing$},
+%                     edge label={node[midway, fill=white, font=\tiny]
+%                     {success}}  
+%                     ]
+%                 ]
+%             ]
+%         ]
+%     ]
+% ]
+% \end{forest}
+% \end{figure}
+% \end{tiny}
+%     \end{column}
+%     \hfill
+%     \begin{column}{0.3\textwidth}
+%       % Right column content
+%       \textbf{Right Side}\\
+%       Here is some text on the right side.\\
+%       It can be completely independent from the left.
+%     \end{column}
+%   \end{columns}
+% \end{frame}
+
+
+% \begin{frame}{Thiemann \& Yamada I}
+% \begin{footnotesize}
+% Matching problems (denoted as $mp$) are reduced using the following rules:
+% \begin{align*}
+% \textbf{decompose} & & \{(f(t_1, \dots, t_n), f(\ell_1, \dots, \ell_n))\} \uplus mp &\rightarrow \{(t_1, \ell_1), \dots, (t_n, \ell_n)\} \cup mp \\
+% \textbf{match} & & \{(t, x)\} \uplus mp &\rightarrow \varnothing\ \text{ if }\ \forall (t', \ell) \in mp \text{. } x \notin \text{Var}(\ell) \\
+% \textbf{clash} & & \{(f(\dots), g(\dots))\} \uplus mp &\rightarrow \bot_{mp}\text{ if }f \neq g
+% \intertext{For pattern problems (sets of matching problems – denoted as $pp$), the following rules apply:}
+% \textbf{remove-mp} & & \{\bot_{mp}\} \uplus pp &\rightarrow pp \\
+% \textbf{success} & & \{\varnothing\} \uplus pp &\rightarrow \varnothing
+% \end{align*}
+% \end{footnotesize}
+% \end{frame}
+
+% \begin{frame}{Thiemann \& Yamada II}
+% \begin{footnotesize}
+% Finally for sets of pattern problems (which is the input of the algorithm, denoted as $P$), the rules are as follows:
+% \begin{align*}
+% \textbf{failure} & & \{\varnothing\} \uplus P &\rightarrow \bot \\
+% \textbf{instantiate} & & \{pp\} \uplus P &\rightarrow \text{Inst$(pp,x) \cup P$ if }\{(x, f(\dots))\} \in pp
+% \end{align*}
+
+% The set $\text{Inst}(pp, x)$ generates the pattern problem:
+% $$\text{Inst}(pp, x) = \{ \{ (t\sigma_{x,c}, \ell) \mid (t, \ell) \in mp \} \mid mp \in pp\}$$ given that $\sigma_{x,c} = [x \mapsto c(x_1, \dots, x_n)]$ for each constructor $c \in \mathcal{C}$ and fresh variables $x_1, \dots, x_n$.
+% \end{footnotesize}
+% \end{frame}
+
+\begin{frame}{Variations}
+Setting: pattern completeness algorithm of Thiemann and Yamada\\
+\vspace{0.5cm}
+Adaptations:
+\begin{itemize}
+    \item Allow matches directly under the root (strong quasi-reducibility)
+    \item Allow matches anywhere in the term (quasi-reducibility)
+    \item Extend to applicative term rewriting with sorts
+\end{itemize}
+    
+\end{frame}
+
+\begin{frame}{Strong Quasi-Reducibility}
+\begin{block}{Definition}
+    TRS $\mathcal{R}$ with lhss $L$ is \textit{strong quasi-reducible} if every ground term has a direct subterm that is matched by some $\ell \in L$.
+\end{block}
+
+\begin{block}{Example}
+    TRS $\mathcal{R}$ with $\mathcal{D} = \{\text{first}\}$, $\mathcal{C} = \{\texttt{[]}, \texttt{:}\}$ \\
+    $R = \{\text{first}\ (x\ \texttt{:}\ xs) \to x,\ \texttt{[]} \to \texttt{[]}\}$
+\end{block}
+
+% \begin{footnotesize}
+% \begin{align*}
+%     \textbf{unwrap} & & \{(d(t_1,\dots,t_n), \ell)\} \uplus mp &\rightarrow \bigcup_{i \leq n}\{(t_i, \ell)\} \cup mp \text{ given } d \in \mathcal{D} \\
+%     \textbf{clash} & & \{(c_1, c_2)\} \uplus mp &\rightarrow \bot_{mp} \text{ given } c_1, c_2 \in \mathcal{C} \text{ and } c_1 \neq c_2
+% \end{align*}
+% \end{footnotesize}
+\end{frame}
+
+\begin{frame}{Example - Strong Quasi-Reducibility}
+\begin{columns}
+\hspace*{-1cm}
+\begin{column}{0.7\textwidth}
+\begin{tiny}
+\begin{forest}
+for tree={
+  scale=0.8,
+  transform shape,
+  align=center,
+  font=\footnotesize,
+  edge={-latex},
+  parent anchor=south,
+  child anchor=north,
+  l sep+=10pt,
+  s sep=7mm
+}
+[\onslide<1>{\textcolor{red}{{$\{\{(\text{first}(z), \text{first}(x\ \texttt{:}\ xs))\}, \{(\text{first}(z), \texttt{[]})\}\}$}}}
+    [\onslide<2>{\textcolor{red}{{$\{\{(z, x\ \texttt{:}\ xs)\}, \{(\text{first}(z), \texttt{[]})\}\}$}}},
+    edge label={node[midway, fill=white, font=\tiny] {decompose}}
+        [\onslide<3>{\textcolor{red}{{$\{\{(z, x\ \texttt{:}\ xs)\}, \{(z, \texttt{[]})\}\}$}}},
+        edge label={node[midway, fill=white, font=\tiny] {unwrap}}
+            [\onslide<4>{\textcolor{red}{{$\{\{(\texttt{[]}, x\ \texttt{:}\ xs)\}, \{(\texttt{[]}, \texttt{[]})\}\}$}}},
+            edge label={node[midway, fill=white, font=\tiny]
+            {\shortstack{instantiate\\{$\sigma = \{z \mapsto \texttt{[]}\}$}}}},
+            l=1.5cm
+                [\onslide<5>{\textcolor{red}{{$\{\bot_{mp}, \varnothing\}$}}},
+                edge label={node[midway, fill=white, font=\tiny]
+                {match/clash}}
+                    [\onslide<6>{\textcolor{red}{{$\varnothing$}}},
+                    edge label={node[midway, fill=white, font=\tiny]
+                    {success}}  
+                    ]
+                ]
+            ]
+            [\onslide<4>{\textcolor{red}{{$\{\{(z\ \texttt{:}\ zs, x\ \texttt{:}\ xs)\}, \{(z\ \texttt{:}\ zs, \texttt{[]})\}\}$}}},
+            edge label={node[midway, fill=white, font=\tiny] {\shortstack{instantiate\\{$\sigma = \{z \mapsto z\ \texttt{:}\ zs\}$}}}},
+            l=1.5cm
+                [\onslide<5>{\textcolor{red}{{$\{\varnothing, \bot_{mp}\}$}}},
+                edge label={node[midway, fill=white, font=\tiny]
+                {decompose/match/clash}}
+                    [\onslide<6>{\textcolor{red}{{$\varnothing$}}},
+                    edge label={node[midway, fill=white, font=\tiny]
+                    {success}}  
+                    ]
+                ]
+            ]
+        ]
+    ]
+]
+\end{forest}
+\end{tiny}
+\end{column}
+\hspace*{0.5cm}
+%\begin{column}{0.4\textwidth}
+\begin{textblock*}{0.55\textwidth}(0.55\textwidth,2.75cm)
+\only<2>{
+\begin{block}{decompose}
+\begin{tiny}
+%\textbf{decompose}:
+$\{(f(t_1, \dots, t_n), f(\ell_1, \dots, \ell_n))\} \uplus mp \rightarrow \{(t_1, \ell_1), \dots, (t_n, \ell_n)\} \cup mp$
+\end{tiny}
+\end{block}
+}
+\only<3>{
+\begin{block}{unwrap}
+\begin{tiny}
+%\textbf{unwrap}:
+$\{(d(t_1,\dots,t_n), \ell)\} \uplus mp \rightarrow \bigcup_{i \leq n}\{(t_i, \ell)\} \cup mp \text{ given } d \in \mathcal{D}$
+\end{tiny}
+\end{block}
+}
+\only<4>{
+\begin{block}{instantiate}
+\begin{tiny}
+%\textbf{instantiate}: 
+$\{pp\} \uplus P \rightarrow \text{Inst}(pp,x) \cup P$ \quad if \quad $\{(x, f(\dots))\} \in pp$
+\vspace{0.2em} \\
+given $\text{Inst}(pp, x) = \{ \{ (t\sigma_{x,c}, \ell) \mid (t, \ell) \in mp \} \mid mp \in pp\}$ 
+% \vspace{0.2em}
+% and $\sigma_{x,c} = [x \mapsto c(x_1, \dots, x_n)]$ 
+% for each $c \in \mathcal{C}$ and fresh variables $x_1, \dots, x_n$.
+\end{tiny}
+\end{block}
+}
+\only<5>{
+\begin{block}{Definition}
+\begin{tiny}
+\textbf{match}: $\{(t, x)\} \uplus mp \rightarrow \varnothing\ \text{ if }\ \forall (t', \ell) \in mp \text{. } x \notin \text{Var}(\ell)$
+
+\textbf{clash}: $\{(f(\dots), g(\dots))\} \uplus mp \rightarrow \bot_{mp}\text{ if }f \neq g$
+\end{tiny}
+\end{block}
+}
+\only<6>{
+\begin{block}{Definition}
+\begin{tiny}
+\textbf{remove-mp}: $\{\bot_{mp}\} \uplus pp \rightarrow pp$
+
+\textbf{success}: $\{\varnothing\} \uplus pp \rightarrow \varnothing$
+\end{tiny}
+\end{block}
+}
+
+\end{textblock*}
+%\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Quasi-Reducibility}
+To allow matches anywhere in the term, we adapt the instantiate rule:
+\begin{footnotesize}
+\begin{align*}
+    \textbf{instantiate} & & \{pp\} \uplus P &\Rrightarrow \text{Inst}(pp, x) \cup \textcolor{red}{\text{Pat}(pp, x)} \cup P
+\end{align*}
+
+where $\text{Pat}(pp, x)$, given thet set of LHSs $L$, is defined as the set:
+$$\text{Pat}(pp, x) = \{ \{(t\sigma_{x,c}, \ell)\} \mid \ell \in L, \text{root}(\ell) \not\in \mathcal{D}\}$$
+% given that $\sigma_{x,c} = [x \mapsto c(x_1, \dots, x_n)]$ for each constructor $c \in \mathcal{C}$ and fresh variables $x_1, \dots, x_n$.
+% The set $\text{Inst}(pp, x)$ still generates the pattern problem:
+% $$\text{Inst}(pp, x) = \{ \{ (t\sigma_{x,c}, \ell) \mid (t, \ell) \in mp \} \mid mp \in pp\}$$
+\end{footnotesize}
+
+\onslide<2->{
+\begin{block}{Example – quasi-reducible, not strong quasi-reducible!}
+    TRS $\mathcal{R}$ with $\mathcal{D} = \{\text{f}\}$, $\mathcal{C} = \{0, s(.), g(.)\}$ \\
+    $L = \{f(0),\ f(s(0)),\ f(s(s(x))),\ g(x)\}$\\
+    Counterexample: $f(s(s(g(.))))$
+\end{block}
+}
+\end{frame}
+
+\begin{frame}{Example – Quasi-Reducibility}
+\begin{tiny}
+\begin{figure}
+    \centering
+\begin{forest}
+for tree={
+  scale=0.8,
+  transform shape,
+  align=center,
+  font=\footnotesize,
+  edge={-latex},
+  parent anchor=south,
+  child anchor=north,
+  l sep+=10pt,
+  s sep=7mm
+}
+[\onslide<1>{\textcolor{red}{{$\{\{(f(z), f(0))\}, \{(f(z), f(s(0)))\}, \{(f(z), f(s(s(x))))\}, \{(f(z), g(x))\}\}$}}}
+    [\onslide<2>{\textcolor{red}{{$\{\{(z, 0)\}, \{(z, s(0))\}, \{(z, s(s(x)))\}, \{(f(z), g(x))\}\}$}}},
+    edge label={node[midway, fill=white, font=\tiny] {decompose}}
+        [\onslide<3>{\textcolor{red}{{$\{\{(z, 0)\}, \{(z, s(0))\}, \{(z, s(s(x)))\}, \{(z, g(x))\}\}$}}},
+        edge label={node[midway, fill=white, font=\tiny] {unwrap}}
+            [\onslide<4>{\textcolor{red}{{$\{\{(0, 0)\},$}}}\\\onslide<4>{\textcolor{red}{{$\{(0, s(0))\},$}}}\\\onslide<4>{\textcolor{red}{{$\{(0, s(s(x)))\},$}}}\\\onslide<4>{\textcolor{red}{{$\{(0, g(x))\}\}$}}},
+            minimum width=3cm,
+            l=2cm,
+            edge label={node[midway, left, fill=white, font=\tiny] {{\shortstack{instantiate\\$\sigma = \{x \mapsto 0\}$\\$\text{Pat}(pp, x) = \{(0, g(x))\}$}}}}
+                [\onslide<5>{\textcolor{red}{{$\varnothing$}}},
+                edge label={node[midway, left, fill=white, font=\tiny] {match/clash}},
+                l=2cm
+                ]
+            ]
+            [\onslide<4>{\textcolor{red}{{$\{\{(s(z), 0)\},$}}}\\\onslide<4>{\textcolor{red}{{$\{(s(z), s(0))\},$}}}\\\onslide<4>{\textcolor{red}{{$\{(s(z), s(s(x)))\},$}}}\\\onslide<4>{\textcolor{red}{{$\{(s(z), g(x))\}\}$}}},
+            minimum width=3cm,
+            l=2cm,
+            edge label={node[midway, fill=white, font=\tiny] {{\shortstack{instantiate\\$\sigma = \{x \mapsto s(z)\}$\\$\text{Pat}(pp, x) = \{(s(z), g(x))\}$}}}}
+                [\onslide<5>{\textcolor{red}{{$\{\{(s(z), s(0))\}, \{(s(z), s(s(x)))\}\}$}}},
+                edge label={node[midway, fill=white, font=\tiny] {clash}},
+                l=2cm
+                ]
+            ]
+            [\onslide<4>{\textcolor{red}{{$\{\{(g(z), 0)\},$}}}\\\onslide<4>{\textcolor{red}{{$\{(g(z), s(0))\},$}}}\\\onslide<4>{\textcolor{red}{{$\{(g(z), s(s(x)))\},$}}}\\\onslide<4>{\textcolor{red}{{$\{(g(z), g(x))\}\}$}}},
+            minimum width=3cm,
+            l=2cm,
+            edge label={node[midway, right, fill=white, font=\tiny] {{\shortstack{instantiate\\$\sigma = \{x \mapsto g(z)\}$\\$\text{Pat}(pp, x) = \{(g(z), g(x))\}$}}}}
+                [\onslide<5>{\textcolor{red}{{$\varnothing$}}},
+                edge label={node[midway, right, fill=white, font=\tiny] {match/clash}},
+                l=2cm
+                ]
+            ]
+        ]
+    ]
+]
+\end{forest}
+\end{figure}
+\end{tiny}
+\end{frame}
+
+\begin{frame}{Example – Quasi-Reducibility continued}
+\begin{tiny}
+\begin{figure}
+    \centering
+\begin{forest}
+for tree={
+  scale=0.8,
+  transform shape,
+  align=center,
+  font=\footnotesize,
+  edge={-latex},
+  parent anchor=south,
+  child anchor=north,
+  l sep+=10pt,
+  s sep=7mm
+}
+[\onslide<1>{\textcolor{red}{{$\{\{(s(z), s(0))\}, \{(s(z), s(s(x)))\}\}$}}}
+[\onslide<2>{\textcolor{red}{{$\{\{(z, 0)\}, \{(z, s(x))\}\}$}}},
+    edge label={node[midway, fill=white, font=\tiny] {decompose}}
+                [\onslide<3>{\textcolor{red}{{$\{\{(0, 0)\}$}}}\\\onslide<3>{\textcolor{red}{{$\{(0, s(x))\}\},$}}}\\\onslide<3>{\textcolor{red}{{$\textbf{\{(0, g(x))\}}\}$}}},
+                edge label={node[midway, left, fill=white, font=\tiny] {{\shortstack{instantiate\\$\sigma = \{z \mapsto 0\}$\\$\text{Pat}(pp, x) = \{(0, g(x))\}$}}}},
+                l=2.5cm,
+                minimum width=3cm
+                    [\onslide<4>{\textcolor{red}{{$\varnothing$}}},
+                    edge label={node[midway, left, fill=white, font=\tiny] {match/clash}}
+                    ]
+                ]
+                [\onslide<3>{\textcolor{red}{{$\{\{(s(z), 0)\}$}}}\\\onslide<3>{\textcolor{red}{{$\{(s(z), s(x))\}\},$}}}\\\onslide<3>{\textcolor{red}{{$\textbf{\{(s(z), g(x))\}}\}$}}},
+                edge label={node[midway, fill=white, font=\tiny] {{\shortstack{instantiate\\$\sigma = \{z \mapsto s(z)\}$\\$\text{Pat}(pp, x) = \{(s(z), g(x))\}$}}}},
+                l=2.5cm,
+                minimum width=3cm
+                    [\onslide<4>{\textcolor{red}{{$\varnothing$}}},
+                    edge label={node[midway, fill=white, font=\tiny] {match/clash}}
+                    ]
+                ]
+                [\onslide<3>{\textcolor{red}{{$\{\{(g(z), 0)\}$}}}\\\onslide<3>{\textcolor{red}{{$\{(g(z), s(x))\}\},$}}}\\\onslide<3>{\textcolor{red}{{$\textbf{\{(g(z), g(x))\}}\}$}}},
+                edge label={node[midway, right, fill=white, font=\tiny] {{\shortstack{instantiate\\$\sigma = \{z \mapsto g(z)\}$\\$\text{Pat}(pp, x) = \{(g(z), g(x))\}$}}}},
+                l=2.5cm,
+                minimum width=3cm
+                    [\onslide<4>{\textcolor{red}{{$\varnothing$}}},
+                    edge label={node[midway, right, fill=white, font=\tiny] {match/clash}}
+                    ]
+                ]
+            ]
+        ]
+\end{forest}
+\end{figure}
+\end{tiny}
+\end{frame}
+
+\begin{frame}{Applicative Term Rewriting}
+\begin{itemize}
+    \item Change the language of a term to allow applicative syntax:
+\begin{center}
+    \texttt{t ::= x | f | f t}
+\end{center}
+    \item Consider sorted term rewriting 
+    \begin{itemize}
+        \item Second order TRS
+        \item Functional variables
+        \item No lambdas
+    \end{itemize}
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Example - Applicative}
+\begin{columns}
+\hspace*{-1cm}
+\begin{column}{0.5\textwidth}
+\begin{tiny}
+\begin{forest}
+for tree={
+  scale=0.8,
+  transform shape,
+  align=center,
+  font=\footnotesize,
+  edge={-latex},
+  parent anchor=south,
+  child anchor=north,
+  l sep+=10pt,
+  s sep=7mm
+}
+[\onslide<1>{\textcolor{red}{{$\{\{(map\ f'\ l', map\ f\ Nil)\}, \{(map\ f'\ l', cons\ n\ l)\}\}$}}}
+    [\onslide<2>{\textcolor{red}{{$\{\{(l', Nil)\}, \{(map\ f'\ l', cons\ n\ l)\}\}$}}},
+    edge label={node[midway, fill=white, font=\tiny] {decompose-app}}
+        [\onslide<3>{\textcolor{red}{{$\{\{(l', Nil)\}, \{(l', cons\ n\ l)\}\}$}}},
+        edge label={node[midway, fill=white, font=\tiny] {unwrap-app}}
+            [\onslide<4>{\textcolor{red}{{$\{\{(Nil, Nil)\}$}}}\\\onslide<4>{\textcolor{red}{{$\{(Nil, cons\ n\ l)\}\}$}}},
+            edge label={node[midway, left, fill=white, font=\tiny] {\shortstack{instantiate\\$\sigma = \{l' \mapsto Nil\}$}}},
+            l=2cm
+            [\onslide<5>{\textcolor{red}{{$\varnothing$}}},
+            edge label={node[midway, fill=white, font=\tiny] {match}}
+            ]
+            ]
+            [\onslide<4>{\textcolor{red}{{$\{\{(cons\ n'\ l', Nil)\}$}}}\\\onslide<4>{\textcolor{red}{{$\{(cons\ n'\ l', cons\ n\ l)\}\}$}}},
+            edge label={node[midway, right, fill=white, font=\tiny] {\shortstack{instantiate\\$\sigma = \{l' \mapsto cons\ n'\ l'\}$}}},
+            l=2cm
+            [\onslide<5>{\textcolor{red}{{$\varnothing$}}},
+            edge label={node[midway, fill=white, font=\tiny] {match}}
+            ]
+            ]
+        ]
+    ]
+]
+\end{forest}
+\end{tiny}
+\end{column}
+\hspace*{2cm}
+\begin{textblock*}{0.55\textwidth}(0.55\textwidth,2.5cm)
+\only<2>{
+\begin{block}{decompose-app}
+\begin{tiny}
+$\{(f\ t_1 \dots t_n, f\ \ell_1 \dots \ell_n)\} \uplus mp \rightarrow \{(f\ t_1 \dots\ t_{n-1}, f\ \ell_1 \dots\ \ell_{n-1}), (t_n, \ell_n)\} \cup mp$
+\end{tiny}
+\end{block}
+}
+\only<3>{
+\begin{block}{unwrap-app}
+\begin{tiny}
+$\{(d\ t_1\ \dots\ t_n, \ell)\} \uplus mp \rightarrow
+\begin{cases}
+ Unwrap(d\ \dots, \ell) \cup mp \text{ if the set Unwrap is non-empty} \\
+\bot_{mp} \text{ otherwise}
+\end{cases}$
+
+\vspace{0.2cm}
+such that $Unwrap(d\ t_1\ \dots\ t_n, \ell) = \bigcup_{i=1}^n \{(t_i, \ell) \mid t_i : \iota \wedge \ell : \iota\}$
+\end{tiny}
+\end{block}
+}
+
+\only<4>{
+\begin{block}{Well-typed instantiation}
+\begin{tiny}
+given $x : \iota_0 \in \mathcal{V}$, $\text{Pat}(pp, x)$ is defined as the set: 
+\vspace{0.2em} \\
+
+$\text{Pat}(pp, x) = \{ \{(t\sigma_{x,c}, \ell)\} \mid \ell \in L,\ \text{root}(\ell) \not\in \mathcal{D},\ \ell : \iota_0\}$
+
+given $\sigma_{x,c} = [x \mapsto c(x_1, \dots, x_n)]$ $\forall c : \iota_1 \to \dots \to \iota_n \to \iota_0 \in \mathcal{C}$
+\end{tiny}
+\end{block}
+}
+\end{textblock*}
+\end{columns}
+\end{frame}
+
+\section{Correctness}
+\begin{frame}{Correctness}
+Ingredients:
+\begin{itemize}
+    \item Termination (the algorithm finishes)
+    \item Soundness (the algorithm computes the correct value)
+\end{itemize}
+    
+\end{frame}
+\begin{frame}{Termination I}
+\onslide<1->{Rules other than instantiate are easily shown to be terminating. To prove termination of instantiate, we define a measure:}
+
+\onslide<2->{
+\begin{definition}
+Define $\lvert (t, \ell) \rvert$ as the size of a pair of terms $(t, \ell) \in mp$:
+
+\begin{enumerate}
+    \item $\lvert (x, \ell) \rvert = $ number of functions symbols in $\ell$ given $x \in \mathcal{V}ar$
+    \item $\lvert (f(t_1, \dots, t_n), f(\ell_1, \dots, \ell_n)) \rvert = \sum_{i=1}^n \lvert (t_i, \ell_i) \rvert$
+    \item $\lvert (d(t_1, \dots, t_n), \ell) \rvert = \sum_{i=1}^n \lvert (t_i, \ell) \rvert$ given $d \in \mathcal{D}$
+    \item $\lvert (t, \ell) \rvert = 0$ otherwise
+\end{enumerate}
+\end{definition}
+}
+
+\onslide<3->{
+These four cases correspond to rules (instantiate) (1), (decompose) (2), (unwrap) (3) and (match) or (clash) (4).
+}
+\end{frame}
+
+\begin{frame}{Termination II}
+\onslide<1->{
+\begin{definition}
+For pattern problems $pp$, define $\lvert pp \rvert = \sum_{mp \in pp} \sum_{(t, \ell) \in mp} \lvert (t, \ell) \rvert$
+\end{definition}
+}
+\onslide<2->{
+\begin{definition}
+For sets of pattern problems $P$, we define relation $\succ$ on $P$ via the multiset extension $>^{mul}$ of $>$ as: 
+$$\lvert P \rvert \succ \lvert P' \rvert \iff \{\lvert pp \rvert \mid pp \in P\} >^{mul} \{\lvert pp \rvert \mid pp \in P'\}$$
+\end{definition}
+}
+\onslide<3->{
+By construction, all rules have the same measure before and after application, except the instantiate rule.
+}
+\end{frame}
+
+\begin{frame}{Termination III}
+\onslide<1->{
+\begin{lemma}
+    Instantiate rule strictly decreases with respect to $|(t, \ell)|$.
+\end{lemma}
+}
+\onslide<2->{
+\begin{block}{Proof.}
+\begin{itemize}
+    \item When (instantiate) is applicable, the pattern problem is of the form $P = \{\{\{(x, \ell)\},\ \dots\}\}$ where $x \in \mathcal{V}ar$ and $\ell \notin \mathcal{V}ar$
+    \item After (instantiate) is applied, we get the following set of pattern problems of the form: $P' = \{\{\{(c(\dots), \ell)\}\} \mid c \in \mathcal{C}\}$
+    \item Assume that the cardinality of $P$ is $n$, then the cardinality of $P'$ is $n * \lvert \mathcal{C} \rvert$
+    \item Resulting pattern problems are of the form $\{\{(c(\dots), \ell)\}\}$, therefore, only cases (2) or (4) are applicable
+\end{itemize}
+\end{block}
+}
+\end{frame}
+
+\begin{frame}{Termination III}
+\onslide<1->{
+\begin{lemma}
+    Instantiate rule strictly decreases with respect to $|(t, \ell)|$.
+\end{lemma}
+}
+\onslide<2->{
+\begin{proof}
+\textit{continued}
+\begin{itemize}
+    \item \textsc{Case (2)}: resulting matching problem consists of a number of function symbols one less than before
+    \item \textsc{Case (4)}: the resulting matching problem has measure $0 < |\{(x, \ell)\}|$ 
+\end{itemize}
+\end{proof}
+}
+\onslide<3->{
+$\implies$ Instantiate rule strictly decreases the measure by replacing an element of the multiset by one or more smaller elements.
+}
+\end{frame}
+
+\begin{frame}{Example - Termination}
+    \begin{block}{Example}
+    Given TRS with constructors $0$ and $s(.)$:
+
+Before instantiate: 
+\begin{align*}
+P &= \{\{\{(a, 0)\}, \{(a, s(x))\}\}\} & \\
+\intertext{After instantiate:}
+P' &= \{\{\{(0, 0)\}, \{(0, s(x))\}\},\ \{\{(s(z), 0)\}, \{(s(z), s(x))\}\}\} & \\
+\lvert P \rvert &= \{2\}\ \lvert P' \rvert = \{0, 0\} \implies \lvert P \rvert \succ \lvert P' \rvert
+\end{align*}
+    \end{block}
+\end{frame}
+
+\begin{frame}{Soundness I}
+\onslide<1->{
+To prove soundness, we check that the \textit{quasi-reducibility} property is preserved by the rules
+}
+\onslide<2->{
+\begin{definition} 
+A set of pattern problems $P$ is \textit{quasi-reducible}, if for every constructor ground substitution $\sigma$ and pattern problem $pp \in P$, there is some matching problem $mp \in pp$ and a substitution $\gamma$, such that for every pair $(t, \ell) \in mp$ either:
+\begin{itemize}
+    \item $t\sigma = \ell\gamma$, or
+    \item there exists a position $p$ such that the subterm $t\sigma|_p = \ell\gamma$ 
+\end{itemize}
+\end{definition}
+}
+\end{frame}
+
+\begin{frame}{Soundness II}
+\begin{block}{Proof (part)}
+\textsc{Case (clash)} 
+\begin{itemize}
+    \item Give quasi-reducible $pp$, fix constructor ground substitution $\sigma$
+    \item Take $mp \in pp$
+    \item Before applying clash, we have some $\{(f(.), g(.))\} \in mp$ such that $f \neq g$
+    \item Therefore, $mp$ is incomplete
+    \item By quasi-reducibility of $pp$, we have some $mp' \neq mp \in pp$ that is quasi-reducible
+    \item Let $pp' = pp \setminus mp$
+\end{itemize}
+$pp'$ is quasi-reducible $\iff$ $pp$ is quasi-reducible
+\end{block}
+\end{frame}
+
+\begin{frame}{Soundness II}
+\begin{block}{Proof. (part)}
+\textsc{Case (instantiate)} 
+\only<1>{
+\begin{itemize}
+    \item Give quasi-reducible $pp$, fix constructor ground substitution $\sigma$
+    \item The rule rewrites pattern problem $pp$ to $pp' = Inst(pp, x) \cup Pat(pp, x)$
+    \item Assume that after applying the rule, there exists some $mp \in pp$ such that we have $(t\sigma, \ell) \in mp$
+\end{itemize}
+}
+\only<2>{
+\begin{itemize}
+    \item \textsc{Case I}:
+    \begin{itemize}
+        \item Assume $\text{Inst}(pp, x)$ generated a complete pattern problem $pp'$
+        \item Then $pp'$ is quasi-reducible iff. $pp$ is quasi-reducible
+    \end{itemize}
+    \item \textsc{Case II}:
+    \begin{itemize}
+        \item Assume $\text{Pat}(pp, x)$ generated a complete pattern problem $pp'$
+        \item Then $pp'$ is quasi-reducible iff. $pp$ is quasi-reducible
+    \end{itemize}
+    \item \textsc{Case III}:
+    \begin{itemize}
+        \item Pattern problem generated $pp'$ generated by $\text{Inst}(pp, x)\ \cup\ \text{Pat}(pp, x)$ is incomplete
+    \end{itemize}
+    
+\end{itemize}
+}
+\end{block}
+\end{frame}
+
+\begin{frame}{Soundness II}
+\begin{lemma}
+    Given TRS $\mathcal{R}$ with lhss $L$ such that $\forall\ l \in L.\ \text{root}(l) \in \mathcal{D}$, we have that $\mathcal{R}$ is quasi-reducible $\iff$ $\mathcal{R}$ is pattern-complete
+\end{lemma}
+
+\begin{block}{Proof. (part)}
+\textsc{Case (instantiate)}
+\begin{itemize}
+    \item From Lemma 1 it follows that there are no other cases
+    \item If the TRS is pattern complete, the set Pat is empty and the algorithm  verifies quasi-reducibility
+    \item If TRS is quasi-reducible, the quasi-reducibility of the system is introduced by the rules in the set Pat
+    \item If TRS is not quasi-reducible, it will stay not quasi-reducible
+\end{itemize}
+\end{block}
+\end{frame}

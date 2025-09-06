@@ -1,0 +1,123 @@
+\documentclass[onlytextwidth]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage{listings}
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage[absolute,overlay]{textpos}
+\usepackage[dvipsnames]{xcolor}
+\usetheme{Berlin}
+
+\usepackage[sorting=none]{biblatex}
+\renewbibmacro{in:}{%
+  \ifentrytype{article}{}{\printtext{\bibstring{in}\intitlepunct}}}
+\addbibresource{cite.bib}
+
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{keywordcolor}{rgb}{0.1, 0.1, 0.6}
+\definecolor{stringcolor}{rgb}{0.63, 0.125, 0.94}
+\definecolor{commentcolor}{rgb}{0.3, 0.4, 0.4}
+\definecolor{identifiercolor}{rgb}{0.0, 0.2, 0.4}
+\definecolor{backgroundcolor}{rgb}{0.97, 0.97, 0.97}
+
+\lstset{
+  language=Haskell,
+  backgroundcolor=\color{backgroundcolor},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{keywordcolor}\bfseries,
+  stringstyle=\color{stringcolor},
+  commentstyle=\color{commentcolor}\itshape,
+  identifierstyle=\color{identifiercolor},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  stepnumber=1,
+  numbersep=10pt,
+  showstringspaces=false,
+  tabsize=2,
+  breaklines=true,
+  breakatwhitespace=false,
+  morekeywords={data, type, newtype, deriving, where, let, in, do, module, import},
+  frame=single,
+  framesep=8pt,
+  xleftmargin=8pt,
+  xrightmargin=8pt
+}
+
+\usepackage{tikz}
+\usetikzlibrary{trees}
+\usepackage{forest}
+
+\graphicspath{{images/}}
+
+\AtBeginSection[]
+{
+  \begin{frame}
+    \frametitle{Outline}
+    \tableofcontents[currentsection]
+  \end{frame}
+}
+
+\usenavigationsymbolstemplate{}
+
+\setbeamercovered{transparent}
+% \beamerdefaultoverlayspecification{<+->}
+
+\title{Beyond Pattern Completeness:\\ Deciding Quasi-Reducibility in Left-Linear TRSs}
+\author[Daniel Koves]{
+    Daniel Koves\\
+    \vspace*{0.3cm}
+    \scriptsize{Femke van Raamsdonk}\\
+    \scriptsize{Jörg Endrullis}
+}
+\institute{Vrije Universiteit Amsterdam}
+\date{July 2025}
+\logo{\includegraphics[height=1cm]{vu-griffioen.pdf}}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\section{Introduction}
+\include{intro}
+
+\include{alg}
+
+\section{Notable Works}
+\begin{frame}{Notable Works}
+    \begin{itemize}
+        \item Calculus of components by Thiel
+        \item Complement algorithm by Lazrek et al
+        \item Decidability of quasi-reducibility by Kapur et al.
+        \item Kop derives quasi-reducibility in higher-order LCTRSs
+        \item Aota and Toyama introduce \textit{strong quasi-reducibility}
+        \item Thiemann and Yamada develop syntax-based algorithm for pattern completness
+        \item Bouhoula et al. use tree-automata based algorithm to decide sufficient completeness
+    \end{itemize}
+\end{frame}
+
+\section{Conclusion}
+\begin{frame}{Conclusion}
+Based on pattern completeness algorithm by Thiemann and Yamada, we developed:
+
+    \begin{itemize}
+        \item Syntax-based algorithm for quasi-reducibility
+        \begin{itemize}
+            \item Strong quasi-reducibility
+            \item Quasi-reducibility
+            \item Applicative term rewriting setting
+        \end{itemize}
+        \item Correctness via soundness and termination
+        \item Tree visualization for reductions
+    \end{itemize}
+\end{frame}
+
+
+\begin{frame}[allowframebreaks]{References}
+\nocite{*}
+\renewcommand*{\bibfont}{\scriptsize}
+\printbibliography
+\end{frame}
+
+\end{document}
